@@ -1,0 +1,136 @@
+/* Serial Tool 前端样式 */
+:root {
+  --bg: #1e1f24;
+  --panel: #26272e;
+  --border: #3a3c46;
+  --text: #e6e7ea;
+  --muted: #9a9ca8;
+  --accent: #4f8cff;
+  --danger: #e05c5c;
+  --ok: #3ecf7a;
+  font-size: 14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---------- 头部 ---------- */
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 16px; margin: 0; }
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  margin-left: auto;
+}
+.status-dot.on { background: var(--ok); }
+
+/* ---------- 工具栏 ---------- */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+#toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+#toolbar select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+/* ---------- 按钮 ---------- */
+button {
+  background: var(--border);
+  color: var(--text);
+  border: none;
+  border-radius: 4px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.2); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: var(--accent); }
+button.danger { background: var(--danger); }
+
+/* ---------- 面板 ---------- */
+section {
+  margin: 10px 16px 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#rxPanel { flex: 1; }
+#txPanel { flex: 0 0 auto; }
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.head-actions { display: flex; align-items: center; gap: 10px; }
+.head-actions select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+textarea {
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  resize: none;
+  outline: none;
+  padding: 10px 12px;
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  flex: 1;
+  min-height: 0;
+}
+#rxOutput { flex: 1; }
+#txInput { height: 90px; }
+
+/* ---------- 状态栏 ---------- */
+footer {
+  padding: 6px 16px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+}

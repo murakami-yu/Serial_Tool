@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Serial Tool - 通用串口调试工具</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Serial Tool</h1>
+    <span id="connStatus" class="status-dot"></span>
+    <span id="connText">未连接</span>
+  </header>
+
+  <!-- 工具栏：端口与参数配置 -->
+  <section id="toolbar">
+    <label>串口
+      <select id="portSelect"></select>
+    </label>
+    <button id="btnScan" title="重新扫描端口">刷新</button>
+    <label>波特率
+      <select id="baudSelect">
+        <option>9600</option><option>19200</option><option>38400</option>
+        <option>57600</option><option selected>115200</option>
+        <option>230400</option><option>460800</option><option>921600</option>
+      </select>
+    </label>
+    <label>数据位
+      <select id="dataBitsSelect"><option selected>8</option><option>7</option></select>
+    </label>
+    <label>停止位
+      <select id="stopBitsSelect"><option selected>1</option><option>1.5</option><option>2</option></select>
+    </label>
+    <label>校验
+      <select id="paritySelect">
+        <option value="N" selected>无</option>
+        <option value="E">偶</option>
+        <option value="O">奇</option>
+      </select>
+    </label>
+    <button id="btnOpen" class="primary">打开</button>
+  </section>
+
+  <!-- 接收区 -->
+  <section id="rxPanel">
+    <div class="panel-head">
+      <span>接收区</span>
+      <div class="head-actions">
+        <label><input type="checkbox" id="rxTime" checked> 时间戳</label>
+        <select id="rxMode">
+          <option value="hex" selected>HEX</option>
+          <option value="ascii">ASCII</option>
+        </select>
+        <button id="btnClear">清空</button>
+      </div>
+    </div>
+    <textarea id="rxOutput" readonly spellcheck="false"></textarea>
+  </section>
+
+  <!-- 发送区 -->
+  <section id="txPanel">
+    <div class="panel-head">
+      <span>发送区</span>
+      <div class="head-actions">
+        <select id="txMode">
+          <option value="hex" selected>HEX</option>
+          <option value="ascii">ASCII</option>
+        </select>
+        <button id="btnSend" class="primary">发送</button>
+      </div>
+    </div>
+    <textarea id="txInput" spellcheck="false" placeholder="HEX 模式示例: AA 55 01 00 0F / ASCII 模式直接输入文本"></textarea>
+  </section>
+
+  <footer id="statusBar">就绪</footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
