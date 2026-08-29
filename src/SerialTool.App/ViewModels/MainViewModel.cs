@@ -119,7 +119,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>协议模板列表（持久化到 Config/frame_templates.json）。</summary>
     public ObservableCollection<FrameTemplate> Templates { get; } = new();
 
-    private FrameParser? _parser;
+    private MultiFrameParser? _parser;
 
     [ObservableProperty]
     private string _txInput = string.Empty;
@@ -206,24 +206,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedTemplateChanged(FrameTemplate? value) => RebuildParser();
 
-    /// <summary>按当前开关与模板重建解析器（模板非法时提示并复位开关）。</summary>
-    private void RebuildParser()
+    /// <summary>按启用模板集合重建多模板解析器（编辑器保存后亦调用）。</summary>
+    public void RebuildParser()
     {
         if (_parser != null)
             _parser.FrameEmitted -= OnFrameEmitted;
         _parser = null;
-        if (!ParseEnabled || SelectedTemplate is null) return;
+        if (!ParseEnabled) return;
 
+        var active = Templates.Where(t => t.Enabled).ToList();
+        if (active.Count == 0)
+        {
+            StatusText = "没有启用的模板（在模板编辑器中勾选\"启用\"）";
+            return;
+        }
         try
         {
-            _parser = new FrameParser(SelectedTemplate);
+            _parser = new MultiFrameParser(active);
             _parser.FrameEmitted += OnFrameEmitted;
-            StatusText = $"帧解析开启: {SelectedTemplate.Name}";
+            StatusText = $"帧解析开启: {active.Count} 个模板并行仲裁";
         }
-        catch (FormatException ex)
+        catch (Exception ex)
         {
-            ParseEnabled = false; // 触发本方法重入，直接清理解析器
-            StatusText = $"模板无效: {ex.Message}";
+            ParseEnabled = false; // 触发本方法重入，清理解析器
+            StatusText = $"解析器构建失败: {ex.Message}";
         }
     }
 
@@ -253,13 +259,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (File.Exists(TemplatesPath))
             {
-                var list = JsonSerializer.Deserialize<List<FrameTemplate>>(File.ReadAllText(TemplatesPath));
-                if (list is not null)
-                    foreach (var t in list)
+                using var doc = JsonDocument.Parse(File.ReadAllText(TemplatesPath));
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var el in doc.RootElement.EnumerateArray())
                     {
-                        try { t.Validate(); } catch { continue; } // 跳过损坏项
+                        FrameTemplate? t = null;
+                        try
+                        {
+                            t = FrameTemplate.MigrateV1(el) ?? el.Deserialize<FrameTemplate>();
+                        }
+                        catch
+                        {
+                            // 单项损坏跳过
+                        }
+                        if (t is null) continue;
+                        try { t.Validate(); } catch { continue; }
                         Templates.Add(t);
                     }
+                }
             }
         }
         catch
@@ -268,7 +286,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         if (Templates.Count == 0)
         {
-            Templates.Add(FrameTemplate.Sample());
+            foreach (var t in FrameTemplate.Samples())
+                Templates.Add(t);
             SaveTemplates();
         }
         SelectedTemplate = Templates[0];
@@ -744,13 +763,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return sb.ToString();
     }
 
-    /// <summary>帧行格式化：✓/✗ 帧头 |命令| 数据 | 校验（+错误原因）。</summary>
+    /// <summary>帧行格式化：✓/✗ [模板] 帧头 |命令| 数据 | 校验（+错误原因）。</summary>
     private string FormatFrameLine(DateTime ts, ParsedFrame f)
     {
         var sb = new System.Text.StringBuilder(64 + f.Raw.Length * 3);
         if (ShowTimestamp)
             sb.Append('[').Append(ts.ToString("HH:mm:ss.fff")).Append("] ");
         sb.Append(f.Ok ? "✓ " : "✗ ");
+        if (f.TemplateName.Length > 0)
+            sb.Append('[').Append(f.TemplateName).Append("] ");
 
         var headLen = f.CommandOffset >= 0 ? f.CommandOffset : f.PayloadOffset;
         sb.Append(Hex.Encode(f.Raw.AsSpan(0, headLen)));

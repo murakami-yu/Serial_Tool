@@ -50,6 +50,13 @@ public static class Checksums
         return frame[^size..].SequenceEqual(expect);
     }
 
+    /// <summary>算法默认线上字节序是否大端（Modbus 小端，CCITT/CRC32 大端；单字节算法无字节序）。</summary>
+    public static bool WireIsBigEndian(ChecksumAlgorithm a) => a switch
+    {
+        ChecksumAlgorithm.Crc16Modbus => false,
+        _ => true,
+    };
+
     // ---------- 基础算法 ----------
 
     private static byte Xor8(ReadOnlySpan<byte> d)

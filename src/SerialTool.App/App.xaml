@@ -1,10 +1,13 @@
 <Application x:Class="SerialTool.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="clr-namespace:SerialTool.App"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <!-- 浅色主题（SSCOM 经典风格） -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <app:BoolToIndexConverter x:Key="BoolToIndex"/>
+        <app:BoolToDotConverter x:Key="BoolToDot"/>
         <SolidColorBrush x:Key="BgBrush" Color="#F4F4F4"/>
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="BorderBrush" Color="#C9C9C9"/>
@@ -133,9 +136,10 @@
                                           IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
                             <Popup IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"
                                    Placement="Bottom" Focusable="False" PopupAnimation="Slide">
-                                <Border CornerRadius="4" Background="{StaticResource PanelBrush}"
-                                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
-                                        Margin="0,3,0,0" MinWidth="{TemplateBinding ActualWidth}"
+                                <!-- 顶部仅 1px 衔接缝，与输入框边框无缝相接（大间隙会被看成"缺口"）；底角圆角收边 -->
+                                <Border CornerRadius="1,1,4,4" Background="{StaticResource PanelBrush}"
+                                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1,0,1,1"
+                                        Margin="0,1,0,0" MinWidth="{TemplateBinding ActualWidth}"
                                         SnapsToDevicePixels="True">
                                     <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}" SnapsToDevicePixels="True">
                                         <StackPanel IsItemsHost="True"
@@ -256,7 +260,10 @@
             <Setter Property="SelectionMode" Value="Single"/>
         </Style>
 
-        <!-- 表头：每列底部一段圆头短线（替代贯通直角下划线） -->
+        <!-- 表头：每列底部一段圆头短线。
+             注意分隔线必须锚定底部（VerticalAlignment=Bottom + MinHeight）：
+             StackPanel 顺序布局会让无文字的表头（DataGrid 内置填充头 PART_FillerColumnHeader，
+             横跨整行、衬在真实表头之下）把分隔线上移 ~15px，恰好横穿真实表头文字中部 -->
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
@@ -264,12 +271,13 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="DataGridColumnHeader">
-                        <StackPanel>
-                            <ContentPresenter Margin="6,6,6,4" VerticalAlignment="Center"
+                        <Grid MinHeight="29">
+                            <ContentPresenter Margin="6,6,6,8" VerticalAlignment="Center"
                                               TextElement.Foreground="{TemplateBinding Foreground}"
                                               RecognizesAccessKey="True"/>
-                            <Border Height="2" CornerRadius="1" Background="#E2E2E2" Margin="4,0,4,2"/>
-                        </StackPanel>
+                            <Border Height="2" CornerRadius="1" Background="#E2E2E2"
+                                    VerticalAlignment="Bottom" Margin="4,0,4,2"/>
+                        </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>

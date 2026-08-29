@@ -9,3 +9,6 @@ dist/
 # Rider/VS Code
 .idea/
 .vscode/
+
+# Python
+__pycache__/
