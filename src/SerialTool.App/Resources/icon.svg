@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A2E38"/>
+      <stop offset="1" stop-color="#16181F"/>
+    </linearGradient>
+    <!-- userSpaceOnUse：尖端与主体采样同一渐变坐标，颜色无缝 -->
+    <linearGradient id="bolt" gradientUnits="userSpaceOnUse" x1="128" y1="18" x2="128" y2="238">
+      <stop offset="0" stop-color="#FFE066"/>
+      <stop offset="0.55" stop-color="#FFC933"/>
+      <stop offset="1" stop-color="#F5A300"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 深色圆角底板 -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="9" y="9" width="238" height="238" rx="55" fill="none" stroke="#3A3F4B" stroke-width="2"/>
+
+  <!-- 均匀翻折边：同路径先画加粗深橙底笔，上层渐变覆盖后四周露出等宽 5px -->
+  <path d="M157 52 H85 V100 L169 166 V204 H95"
+        fill="none" stroke="#B87700" stroke-width="54"
+        stroke-linejoin="miter" stroke-linecap="butt"/>
+  <path d="M157 52 H85 V100 L169 166 V204 H95"
+        fill="none" stroke="url(#bolt)" stroke-width="44"
+        stroke-linejoin="miter" stroke-linecap="butt"/>
+
+  <!-- 闪电尖端：上尖收窄降视觉重量、下尖略下挑（角度对称呼应斜切） -->
+  <path d="M157 32 V72 L195 42 Z" fill="url(#bolt)" stroke="#B87700" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M95 182 V226 L63 216 Z" fill="url(#bolt)" stroke="#B87700" stroke-width="5" stroke-linejoin="round"/>
+</svg>

@@ -249,21 +249,50 @@
             <Setter Property="RowBackground" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#E6E6E6"/>
+            <!-- 内置网格线为贯通直线，关闭后由行模板绘制圆头分隔线 -->
+            <Setter Property="GridLinesVisibility" Value="None"/>
             <Setter Property="AutoGenerateColumns" Value="False"/>
             <Setter Property="CanUserAddRows" Value="False"/>
             <Setter Property="SelectionMode" Value="Single"/>
         </Style>
 
-        <!-- 表头：透明带 + 底部分隔线（不画色块，圆角由外层框呈现） -->
+        <!-- 表头：每列底部一段圆头短线（替代贯通直角下划线） -->
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
-            <Setter Property="Padding" Value="6,6"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridColumnHeader">
+                        <StackPanel>
+                            <ContentPresenter Margin="6,6,6,4" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              RecognizesAccessKey="True"/>
+                            <Border Height="2" CornerRadius="1" Background="#E2E2E2" Margin="4,0,4,2"/>
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 表格行：行底圆头分隔线（两端留边距，不贯通到边框）；选中不高亮 -->
+        <Style TargetType="DataGridRow">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridRow">
+                        <StackPanel>
+                            <DataGridCellsPresenter/>
+                            <Border Height="2" CornerRadius="1" Background="#ECECEC" Margin="10,0,10,2"/>
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <!-- 分隔条：平时隐形，悬停显示灰色圆角手柄，拖动时蓝色 -->
@@ -331,16 +360,6 @@
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter Property="Width" Value="0"/>
                     <Setter Property="Height" Value="0"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- 表格行：选中不高亮（保持干净，选中项仍可被"删除选中"使用） -->
-        <Style TargetType="DataGridRow">
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>

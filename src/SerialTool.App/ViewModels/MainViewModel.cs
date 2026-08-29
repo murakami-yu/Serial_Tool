@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SerialTool.App.Services;
 using SerialTool.Core;
+using SerialTool.Core.Framing;
 using SerialTool.Backends;
 using SerialTool.Backends.Serial;
 using SerialTool.Backends.Tcp;
@@ -21,7 +22,8 @@ namespace SerialTool.App.ViewModels;
 /// <param name="Ts">时间戳。</param>
 /// <param name="Bytes">原始字节。</param>
 /// <param name="IsTx">true = 本机发送（显示 →）。</param>
-public sealed record RxItem(DateTime Ts, byte[] Bytes, bool IsTx);
+/// <param name="Frame">解析出的帧（原始数据行为 null）。</param>
+public sealed record RxItem(DateTime Ts, byte[] Bytes, bool IsTx, ParsedFrame? Frame = null);
 
 /// <summary>接收框渲染指令（事件驱动，视图直接操作文本以保留滚动位置）。</summary>
 public enum RxRenderKind
@@ -100,6 +102,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showFramesPanel = true;
 
+    // ---------- 帧解析 ----------
+
+    [ObservableProperty]
+    private bool _parseEnabled;
+
+    [ObservableProperty]
+    private FrameTemplate? _selectedTemplate;
+
+    [ObservableProperty]
+    private long _frameOkCount;
+
+    [ObservableProperty]
+    private long _frameErrCount;
+
+    /// <summary>协议模板列表（持久化到 Config/frame_templates.json）。</summary>
+    public ObservableCollection<FrameTemplate> Templates { get; } = new();
+
+    private FrameParser? _parser;
+
     [ObservableProperty]
     private string _txInput = string.Empty;
 
@@ -174,8 +195,98 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch { /* 目录创建失败时打开按钮会提示 */ }
 
         LoadUiSettings();
+        LoadTemplates();
         _ = LoadPortsAsync();
         LoadFrames();
+    }
+
+    // ---------- 帧解析联动 ----------
+
+    partial void OnParseEnabledChanged(bool value) => RebuildParser();
+
+    partial void OnSelectedTemplateChanged(FrameTemplate? value) => RebuildParser();
+
+    /// <summary>按当前开关与模板重建解析器（模板非法时提示并复位开关）。</summary>
+    private void RebuildParser()
+    {
+        if (_parser != null)
+            _parser.FrameEmitted -= OnFrameEmitted;
+        _parser = null;
+        if (!ParseEnabled || SelectedTemplate is null) return;
+
+        try
+        {
+            _parser = new FrameParser(SelectedTemplate);
+            _parser.FrameEmitted += OnFrameEmitted;
+            StatusText = $"帧解析开启: {SelectedTemplate.Name}";
+        }
+        catch (FormatException ex)
+        {
+            ParseEnabled = false; // 触发本方法重入，直接清理解析器
+            StatusText = $"模板无效: {ex.Message}";
+        }
+    }
+
+    /// <summary>解析线程回调：帧入队（帧模式下原始字节流不再逐块显示）。</summary>
+    private void OnFrameEmitted(ParsedFrame frame)
+        => _rxQueue.Enqueue(new RxItem(frame.Ts, frame.Raw, IsTx: false, frame));
+
+    /// <summary>打开模板编辑窗口。</summary>
+    [RelayCommand]
+    private void OpenTemplateEditor()
+    {
+        var win = new TemplateEditorWindow(this)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+        win.Show();
+    }
+
+    // ---------- 模板持久化 ----------
+
+    private static string TemplatesPath
+        => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "frame_templates.json");
+
+    private void LoadTemplates()
+    {
+        try
+        {
+            if (File.Exists(TemplatesPath))
+            {
+                var list = JsonSerializer.Deserialize<List<FrameTemplate>>(File.ReadAllText(TemplatesPath));
+                if (list is not null)
+                    foreach (var t in list)
+                    {
+                        try { t.Validate(); } catch { continue; } // 跳过损坏项
+                        Templates.Add(t);
+                    }
+            }
+        }
+        catch
+        {
+            // 配置损坏时使用默认模板
+        }
+        if (Templates.Count == 0)
+        {
+            Templates.Add(FrameTemplate.Sample());
+            SaveTemplates();
+        }
+        SelectedTemplate = Templates[0];
+    }
+
+    /// <summary>保存模板列表（编辑窗口调用）。</summary>
+    public void SaveTemplates()
+    {
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(TemplatesPath)!);
+            File.WriteAllText(TemplatesPath,
+                JsonSerializer.Serialize(Templates.ToList(), new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"模板保存失败: {ex.Message}";
+        }
     }
 
     // ---------- 连接方式联动 ----------
@@ -494,6 +605,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _lines.Clear();
         RxCount = 0;
         TxCount = 0;
+        FrameOkCount = 0;
+        FrameErrCount = 0;
+        _parser?.Reset();
         RxRendered?.Invoke(this, new RxRender(RxRenderKind.Clear, string.Empty));
     }
 
@@ -565,11 +679,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ---------- 数据流 ----------
 
-    /// <summary>读取线程回调：仅入队，不做任何 UI 操作。</summary>
+    /// <summary>读取线程回调：仅入队/喂解析器，不做任何 UI 操作。</summary>
     private void OnDataReceived(object? sender, TimedData e)
     {
-        _rxQueue.Enqueue(new RxItem(e.Timestamp, e.Bytes, IsTx: false));
         Interlocked.Add(ref _pendingRxBytes, e.Bytes.Length);
+        if (_parser != null)
+        {
+            // 帧解析模式：原始字节流进解析器，接收区只显示解出的帧
+            _parser.Feed(e.Bytes);
+            return;
+        }
+        _rxQueue.Enqueue(new RxItem(e.Timestamp, e.Bytes, IsTx: false));
     }
 
     /// <summary>UI 定时批量投递：高波特率下避免逐字节刷新；同时把新行落盘。
@@ -589,6 +709,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         RxCount += Interlocked.Exchange(ref _pendingRxBytes, 0);
 
+        // 帧统计
+        long ok = 0, err = 0;
+        foreach (var item in newItems)
+        {
+            if (item.Frame is null) continue;
+            if (item.Frame.Ok) ok++; else err++;
+        }
+        if (ok > 0) FrameOkCount += ok;
+        if (err > 0) FrameErrCount += err;
+
         var sb = new System.Text.StringBuilder(newItems.Count * 32);
         foreach (var item in newItems)
         {
@@ -603,11 +733,35 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>单行格式化：[时间戳] 方向 数据（显示与日志共用）。</summary>
     private string FormatLine(RxItem item)
     {
+        if (item.Frame is { } f)
+            return FormatFrameLine(item.Ts, f);
+
         var sb = new System.Text.StringBuilder(48 + item.Bytes.Length * 3);
         if (ShowTimestamp)
             sb.Append('[').Append(item.Ts.ToString("HH:mm:ss.fff")).Append("] ");
         sb.Append(item.IsTx ? "→ " : "← ");
         sb.Append(ShowHex ? Hex.Encode(item.Bytes) : Hex.ToAscii(item.Bytes));
+        return sb.ToString();
+    }
+
+    /// <summary>帧行格式化：✓/✗ 帧头 |命令| 数据 | 校验（+错误原因）。</summary>
+    private string FormatFrameLine(DateTime ts, ParsedFrame f)
+    {
+        var sb = new System.Text.StringBuilder(64 + f.Raw.Length * 3);
+        if (ShowTimestamp)
+            sb.Append('[').Append(ts.ToString("HH:mm:ss.fff")).Append("] ");
+        sb.Append(f.Ok ? "✓ " : "✗ ");
+
+        var headLen = f.CommandOffset >= 0 ? f.CommandOffset : f.PayloadOffset;
+        sb.Append(Hex.Encode(f.Raw.AsSpan(0, headLen)));
+        if (f.CommandOffset >= 0)
+            sb.Append(" |").Append(Hex.Encode(f.Raw.AsSpan(f.CommandOffset, f.PayloadOffset - f.CommandOffset))).Append('|');
+        sb.Append(' ').Append(Hex.Encode(f.Raw.AsSpan(f.PayloadOffset, f.PayloadLength)));
+        var tail = Hex.Encode(f.Raw.AsSpan(f.PayloadOffset + f.PayloadLength));
+        if (tail.Length > 0)
+            sb.Append(" | ").Append(tail);
+        if (!f.Ok)
+            sb.Append("   ← ").Append(f.Error);
         return sb.ToString();
     }
 

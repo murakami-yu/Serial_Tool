@@ -16,8 +16,8 @@
 | 3 | 数据接收 | HEX/ASCII 双模式、时间戳开关、自动滚动、大缓冲环形截断、一键清空、暂停显示 | V1 |
 | 4 | 数据发送 | HEX/ASCII 双模式、Enter 快捷发送；多帧发送（右侧面板）：帧列表编辑/增删、**每帧备注注释**、任意帧手动发送、每帧独立周期循环发送（最小 50ms）、JSON 持久化（Config/send_frames.json，含备注） | V1.0 ✅（发送历史 V1.3） |
 | 5 | 会话日志 | 收发数据持续写入 txt（AutoFlush 防异常丢失）、自定义保存位置、一键定位文件 | V1.0 ✅（回放预留） |
-| 6 | 协议帧解析 | 可配置帧格式模板（帧头/帧尾/长度域/地址域/校验域/数据域）、JSON 协议模板管理、接收区按帧分段高亮、校验错误标记 | V1.1 |
-| 7 | 校验算法库 | CRC8/16/32（常用多项式）、XOR、累加和；大小端、有符号/无符号、BCD、位域提取 | V1.1 |
+| 6 | 协议帧解析 | 可配置帧格式模板（帧头/帧尾/长度域/命令域/数据域/校验域）、JSON 协议模板管理与编辑器、粘包/半包/假帧头/校验失败自动重同步、接收区按帧结构化显示（✓/✗ + 帧头\|命令\|数据\|校验）、帧计数统计 | V1.1 ✅（彩色高亮随 V1.2 视图升级） |
+| 7 | 校验算法库 | CRC8(SMBus)/CRC16-Modbus/CRC16-CCITT-FALSE/CRC32（查表法）+ XOR + 累加和；标准测试向量全覆盖；大小端（长度域/校验值）；BCD/位域提取归入 V3 DBC | V1.1 ✅ |
 | 8 | 数据级时序图（L1 波形） | 收到的字节/帧按时间戳画时间线，缩放平移（ScottPlot SignalPlot） | V1.2 |
 | 9 | 协议序列图（L2） | I2C/CAN 事务级时序视图：START→ADDR→ACK→DATA→STOP | V2/V3 |
 | 10 | 电平级波形（L3） | 真实总线电平采样（需逻辑分析仪硬件），独立可选模块，接口预留 | 预留 |
@@ -31,7 +31,7 @@
 
 ```
 V1.0   串口收发 + 端口管理(含设备名) + TCP 连接 + 会话日志 + 多帧定时发送（WPF 骨架 + MVVM）✅
-V1.1 ★ 协议帧解析引擎 + 校验算法库        ← 核心价值
+V1.1 ★ 协议帧解析引擎 + 校验算法库 ✅（41 单测全过：校验标准向量 + 解析全边界）
 V1.2    数据级时序图（ScottPlot）
 V1.3    发送历史 / 热插拔 / 多端口标签 / 流控（RTS-CTS）
 V2      I2C 后端（FTDI.FTD2XX_NET 官方包）+ 事务解析 + L2 序列图
@@ -86,7 +86,7 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 | 阶段 | 内容 | 关键交付物 | 状态 |
 | ---- | ---- | ---------- | ---- |
 | V1.0 | WPF 骨架：项目结构、MVVM 模式（CommunityToolkit）、串口后端（SerialPortStream + WMI 设备名）、TCP 后端、收发控制台 UI、会话日志、多帧发送（手动/每帧独立周期循环，JSON 持久化）、自包含发布脚本 | `SerialTool.slnx`、`Backends/SerialBackend.cs`、`Backends/TcpBackend.cs`、`SendFrameViewModel.cs`、发布脚本 | ✅ 完成（2026-08-29：构建零警告、单测 12/12、启动冒烟通过） |
-| V1.1 | 帧解析引擎：帧状态机（粘包/半包）、校验库（CRC 查表）、JSON 模板、解析高亮视图 | `Core/Framing`、`Core/Checksum`、模板编辑器 | 规划 |
+| V1.1 | 帧解析引擎：缓冲扫描解析器（粘包/半包/重同步）、校验库（CRC 查表 + XOR/累加和）、JSON 模板 + 编辑器窗口、接收区帧结构化显示、帧✓/✗ 统计 | `Core/Checksum/Checksums.cs`、`Core/Framing/{FrameTemplate,FrameParser}.cs`、`TemplateEditorWindow` | ✅ 完成（2026-08-29：41/41 单测、构建零警告、冒烟通过） |
 | V1.2 | 波形面板（ScottPlot SignalPlot 实时滚动） | `Views/WaveformPanel` | 规划 |
 | V1.3 | 发送历史、热插拔（WM_DEVICECHANGE）、多端口标签、流控（RTS-CTS） | — | 规划 |
 | V2 | I2C 后端（FTDI.FTD2XX_NET）、扫描/寄存器读写、L2 序列图 | `Backends/I2cBackend.cs` | 规划 |
@@ -100,7 +100,7 @@ SerialTool/
 ├── SerialTool.slnx                # .NET 10 XML 解决方案格式
 ├── src/
 │   ├── SerialTool.App/            # WPF 主程序（视图、视图模型；AvalonDock 随 V1.2/V1.3 多面板引入）
-│   ├── SerialTool.Core/           # 解析引擎（纯 C# 类库）：Hex 工具 / Framing(V1.1) / Checksum(V1.1) / Templates(V1.1) / DBC(V3)
+│   ├── SerialTool.Core/           # 解析引擎（纯 C# 类库）：Hex / Checksum(V1.1✅) / Framing(V1.1✅) / DBC(V3)
 │   └── SerialTool.Backends/       # 硬件后端：IBusBackend 接口 + Serial/Tcp(V1) / I2c(V2) / Can(V3)
 ├── tests/
 │   └── SerialTool.Core.Tests/     # xUnit 单测（Hex 12 用例；V1.1 加校验向量、粘包/半包）

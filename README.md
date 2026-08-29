@@ -39,9 +39,9 @@ SerialTool/
 ├── SerialTool.slnx              # 解决方案（.NET 10 XML 格式）
 ├── src/
 │   ├── SerialTool.App/          # WPF 主程序（MVVM 收发控制台 + 会话日志 + 多帧定时发送）
-│   ├── SerialTool.Core/         # 解析引擎（Hex 工具，V1.1 加帧解析）
+│   ├── SerialTool.Core/         # 解析引擎（Hex + Checksum + Framing 帧解析）
 │   └── SerialTool.Backends/     # 硬件后端（IBusBackend + SerialBackend + TcpBackend）
-├── tests/SerialTool.Core.Tests/ # xUnit（12 用例）
+├── tests/SerialTool.Core.Tests/ # xUnit（41 用例）
 ├── scripts/publish.ps1          # 自包含单文件发布
 ├── Docs/                        # 设计文档 + 技术调查
 └── legacy/                      # v0.2 Go B/S 方案归档
@@ -60,7 +60,7 @@ SerialTool/
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
 | V1.0 | WPF 骨架 + 串口收发控制台（SerialPortStream，含设备名识别）+ TCP 连接 + 会话日志 + 多帧定时发送（含帧备注） | ✅ 完成 |
-| V1.1 | 帧解析引擎 + CRC 校验库 + JSON 协议模板 + 解析高亮 | 规划 |
+| V1.1 | 帧解析引擎 + CRC 校验库 + JSON 协议模板（含编辑器）+ 帧结构化显示 | ✅ 完成 |
 | V1.2 | ScottPlot 时序图 | 规划 |
 | V1.3 | 发送历史 / 热插拔 / 多端口标签 / 流控 | 规划 |
 | V2 | I2C 后端（FT232H 官方包）+ 事务解析 | 规划 |

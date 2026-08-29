@@ -98,7 +98,7 @@
         <GroupBox Grid.Row="1" Grid.Column="0" Header="接收区" BorderBrush="{StaticResource BorderBrush}"
                   Foreground="{StaticResource MutedBrush}">
             <DockPanel Margin="4">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                     <CheckBox Content="时间戳" IsChecked="{Binding ShowTimestamp}"/>
                     <CheckBox Content="HEX 显示" IsChecked="{Binding ShowHex}" Margin="16,0,0,0"/>
                     <CheckBox Content="跟随最新" IsChecked="{Binding AutoScroll}" Margin="16,0,0,0"
@@ -109,7 +109,15 @@
                     <Button Content="日志位置" Command="{Binding BrowseLogCommand}" Margin="8,0,0,0"/>
                     <Button Content="打开目录" Command="{Binding OpenLogFolderCommand}" Margin="8,0,0,0"/>
                     <Button Content="清空" Command="{Binding ClearRxCommand}" Margin="24,0,0,0"/>
-                </StackPanel>
+
+                    <CheckBox Content="帧解析" IsChecked="{Binding ParseEnabled}" Margin="24,0,0,0"
+                              ToolTip="按模板解析接收字节流，按帧结构化显示（粘包/半包自动处理）"/>
+                    <ComboBox ItemsSource="{Binding Templates}"
+                              SelectedItem="{Binding SelectedTemplate}"
+                              DisplayMemberPath="Name" Width="150" Margin="8,0,0,0"/>
+                    <Button Content="模板…" Command="{Binding OpenTemplateEditorCommand}" Margin="8,0,0,0"
+                            ToolTip="编辑协议帧模板"/>
+                </WrapPanel>
                 <TextBox x:Name="RxOutput" Style="{StaticResource Mono}" IsReadOnly="True"
                          TextWrapping="Wrap" VerticalContentAlignment="Top"
                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -238,6 +246,8 @@
                 <TextBlock DockPanel.Dock="Right" Foreground="{StaticResource MutedBrush}">
                     <Run Text="RX: "/><Run Text="{Binding RxCount, Mode=OneWay}"/>
                     <Run Text="  TX: "/><Run Text="{Binding TxCount, Mode=OneWay}"/>
+                    <Run Text="  帧✓ "/><Run Text="{Binding FrameOkCount, Mode=OneWay}"/>
+                    <Run Text=" / ✗ "/><Run Text="{Binding FrameErrCount, Mode=OneWay}"/>
                 </TextBlock>
                 <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource MutedBrush}"/>
             </DockPanel>
