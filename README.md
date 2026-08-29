@@ -1,67 +1,74 @@
-# Serial Tool — 通用串口调试工具
+# Serial Tool — Windows 通用串口调试工具
 
-跨平台（Windows / macOS）通用串口调试工具：解析 UART / RS232 / RS485 / I2C / CAN，
-**免安装、免签名**分发——单文件二进制 + 浏览器 UI。
+Windows 专用通用串口调试工具：UART / RS232 / RS485 收发起步，模块化扩展 I2C、CAN，
+协议级帧解析 + 可选波形显示。**免安装分发**（自包含单 exe，零运行时依赖，双击即用）。
 
-## 快速开始
+> 状态：方案 v0.3 ｜ V1.0 骨架完成（2026-08-29，构建+单测 12/12+冒烟通过）
+> 决策依据与调查记录：[Docs/串口工具技术栈调查文档.md](Docs/串口工具技术栈调查文档.md) ｜ 设计详情：[Docs/Serial_Tool_Design.md](Docs/Serial_Tool_Design.md)
 
-```bash
-# 方式一：源码运行（需 Go 1.22+）
-go run ./cmd/serial-tool
+## 技术栈（v0.3 定稿）
 
-# 方式二：直接运行编译好的二进制
-./serial-tool            # 或 serial-tool.exe（Windows）
-```
-
-启动后自动打开浏览器访问 http://127.0.0.1:8970 即可使用。
-停止：Ctrl+C。无安装、无服务注册、无签名依赖。
+| 层 | 组件 |
+| --- | --- |
+| 语言/运行时 | C# / **.NET 10**（LTS），WPF |
+| MVVM | CommunityToolkit.MVVM |
+| 停靠布局 | Dirkster.AvalonDock（VS 式多面板） |
+| 波形 | ScottPlot 5（SignalPlot 百万点实时） |
+| 串口 | RJCP.SerialPortStream（NuGet 3.0.5） |
+| I2C（V2） | FTDI.FTD2XX_NET（厂商官方包） |
+| CAN（V3） | Peak.PCANBasic.NET（官方）或 CANable slcan |
+| 单测 | xUnit |
 
 ## 架构
 
-**Go 单文件后端 + 浏览器 UI（B/S）**：
-
 ```
-浏览器 ──WebSocket──► 后端（127.0.0.1:8970）
-                        │
-                        ├── backend/serial   ← UART / RS232 / RS485（V1）
-                        ├── backend/i2c      ← V2（规划）
-                        ├── backend/can      ← V3（规划）
-                        └── core/            ← 协议解析引擎（规划）
-```
-
-- 三类总线实现统一 `backend.Backend` 接口，输出 `{Ts, Bytes}` 事件流，插拔式扩展
-- 前端资源 `go:embed` 进二进制，单文件分发
-- 只监听 `127.0.0.1` + Host 校验，防外部访问（安全要点见调查文档 §7.4）
-
-## 目录结构
-
-```
-├── cmd/serial-tool/     # 入口
-├── internal/
-│   ├── server/          # HTTP + WebSocket + 静态文件伺服
-│   ├── backend/         # 统一后端接口 + serial / i2c / can 实现
-│   └── core/            # 协议解析引擎（规划）
-├── web/                 # 前端静态资源（embed）
-├── scripts/             # 交叉编译脚本（win/mac × amd64/arm64）
-└── docs/                # 设计文档、技术栈调查
+WPF UI 层（MVVM：收发控制台 / 帧解析视图 / 波形面板，AvalonDock 停靠）
+   ↓
+Core 解析引擎（纯 C# 类库：帧状态机 / CRC 校验库 / JSON 协议模板 / DBC）
+   ↓
+Backends 硬件层（IBusBackend 接口插拔）
+   SerialBackend(V1) → I2cBackend(V2) → CanBackend(V3)
+   ↓
+分发：dotnet publish 自包含单 exe（~70MB，免安装）
 ```
 
-## 构建与分发
+## 目录结构（规划）
 
-```bash
-./scripts/build.sh       # Windows: .\scripts\build.ps1
+```
+SerialTool/
+├── SerialTool.slnx              # 解决方案（.NET 10 XML 格式）
+├── src/
+│   ├── SerialTool.App/          # WPF 主程序（MVVM 收发控制台 + 会话日志 + 多帧定时发送）
+│   ├── SerialTool.Core/         # 解析引擎（Hex 工具，V1.1 加帧解析）
+│   └── SerialTool.Backends/     # 硬件后端（IBusBackend + SerialBackend + TcpBackend）
+├── tests/SerialTool.Core.Tests/ # xUnit（12 用例）
+├── scripts/publish.ps1          # 自包含单文件发布
+├── Docs/                        # 设计文档 + 技术调查
+└── legacy/                      # v0.2 Go B/S 方案归档
 ```
 
-产出 `dist/` 下 4 个单二进制（win/mac × amd64/arm64），zip 打包即分发。
+## 开发环境
+
+- Windows 10/11
+- Visual Studio 2026 Community（含 .NET 桌面开发工作负载）或 `dotnet` SDK 10
+- 运行调试：VS 2026 打开 `SerialTool.slnx`，或 `dotnet run --project src/SerialTool.App`
+- 单测：`dotnet test tests/SerialTool.Core.Tests`
+- 发布：`./scripts/publish.ps1` → `dist/` 单 exe
 
 ## 路线图
 
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| V1 | UART/RS232/RS485 收发 + 端口管理 | 骨架已完成 |
-| V1.1 | 可配置帧解析（帧头/长度/校验）+ 协议模板 | 规划 |
-| V1.2 | L1 数据级时序图（波形基础版） | 规划 |
-| V2 | I2C 后端（FT232H/D2XX）+ 事务解析 | 规划 |
-| V3 | CAN 后端（CANable SLCAN）+ DBC 解析 | 规划 |
+| V1.0 | WPF 骨架 + 串口收发控制台（SerialPortStream，含设备名识别）+ TCP 连接 + 会话日志 + 多帧定时发送（含帧备注） | ✅ 完成 |
+| V1.1 | 帧解析引擎 + CRC 校验库 + JSON 协议模板 + 解析高亮 | 规划 |
+| V1.2 | ScottPlot 时序图 | 规划 |
+| V1.3 | 发送历史 / 热插拔 / 多端口标签 / 流控 | 规划 |
+| V2 | I2C 后端（FT232H 官方包）+ 事务解析 | 规划 |
+| V3 | CAN 后端（PCAN/slcan）+ DBC 解析 + 信号曲线 | 规划 |
 
-详细决策记录见 [docs/串口工具技术栈调查文档.md](docs/串口工具技术栈调查文档.md)。
+## 方案变更历史
+
+| 版本 | 方案 | 状态 |
+| --- | --- | --- |
+| v0.2 | Go 单文件后端 + 浏览器 UI（B/S，跨 Win/Mac，规避 Mac 签名） | **作废**（macOS 需求取消），代码已归档至 `legacy/` |
+| v0.3 | C# / .NET 10 + WPF（Windows-only，自包含单 exe） | **现行** |

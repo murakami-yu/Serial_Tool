@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SerialTool.App/SerialTool.App.csproj" />
+    <Project Path="src/SerialTool.Backends/SerialTool.Backends.csproj" />
+    <Project Path="src/SerialTool.Core/SerialTool.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SerialTool.Core.Tests/SerialTool.Core.Tests.csproj" />
+  </Folder>
+</Solution>

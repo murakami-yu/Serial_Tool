@@ -2,7 +2,7 @@
 
 > 版本：v0.3 ｜ 日期：2026-08-29
 > 平台：**仅 Windows 10/11**，免安装（自包含单 exe）
-> 技术栈：C# / .NET 8 + WPF（调查依据见 [串口工具技术栈调查文档.md](串口工具技术栈调查文档.md) v0.3）
+> 技术栈：C# / .NET 10 + WPF（调查依据见 [串口工具技术栈调查文档.md](串口工具技术栈调查文档.md) v0.3）
 > 变更记录：v0.2 为 Go+B/S 跨平台方案（作废，macOS 需求取消）；v0.3 基于 Windows-only 复评重定
 
 ## 一、功能设计
@@ -11,11 +11,11 @@
 
 | 编号 | 功能名 | 功能详情 | 阶段 |
 | ---- | ------ | -------- | ---- |
-| 1 | 串口扫描与识别 | 枚举 COM 口（WMI 取 VID/PID/友好名称）、手动刷新、占用状态提示、热插拔自动提示 | V1（热插拔 V1.3） |
-| 2 | 串口参数配置 | 波特率（9600–921600 预设+自定义）、数据位（7/8）、停止位（1/1.5/2）、校验位（无/偶/奇）、流控（无/RTS-CTS） | V1 |
+| 1 | 串口扫描与识别 | 枚举 COM 口并显示设备名（WMI 查 PnP 实体，如 "COM3 · USB-SERIAL CH340"）、手动刷新（后台线程防卡 UI）、占用状态提示、热插拔自动提示 | V1.0 ✅（热插拔 V1.3） |
+| 2 | 串口参数配置 | 波特率（9600–921600 预设）、数据位（7/8）、停止位（1/1.5/2）、校验位（无/偶/奇）、流控（无/RTS-CTS，V1.3 补） | V1 |
 | 3 | 数据接收 | HEX/ASCII 双模式、时间戳开关、自动滚动、大缓冲环形截断、一键清空、暂停显示 | V1 |
-| 4 | 数据发送 | HEX/ASCII 双模式、Enter 快捷发送、发送历史、循环发送（周期/次数可配） | V1（循环 V1.3） |
-| 5 | 会话日志 | 收发日志带时间戳保存（txt/csv）；历史日志导入回放 | V1.2（回放预留） |
+| 4 | 数据发送 | HEX/ASCII 双模式、Enter 快捷发送；多帧发送（右侧面板）：帧列表编辑/增删、**每帧备注注释**、任意帧手动发送、每帧独立周期循环发送（最小 50ms）、JSON 持久化（Config/send_frames.json，含备注） | V1.0 ✅（发送历史 V1.3） |
+| 5 | 会话日志 | 收发数据持续写入 txt（AutoFlush 防异常丢失）、自定义保存位置、一键定位文件 | V1.0 ✅（回放预留） |
 | 6 | 协议帧解析 | 可配置帧格式模板（帧头/帧尾/长度域/地址域/校验域/数据域）、JSON 协议模板管理、接收区按帧分段高亮、校验错误标记 | V1.1 |
 | 7 | 校验算法库 | CRC8/16/32（常用多项式）、XOR、累加和；大小端、有符号/无符号、BCD、位域提取 | V1.1 |
 | 8 | 数据级时序图（L1 波形） | 收到的字节/帧按时间戳画时间线，缩放平移（ScottPlot SignalPlot） | V1.2 |
@@ -25,14 +25,15 @@
 | 12 | CAN 总线支持 | 标准帧/扩展帧收发、DBC 文件解析、信号物理量曲线 | V3 |
 | 13 | 多端口并行 | 多串口标签页独立收发、对比视图 | V1.3 |
 | 14 | 免安装分发 | 自包含单 exe（~70MB 零依赖），zip 分发，双击即用 | V1 |
+| 15 | TCP 连接 | 串口服务器/TCP 透传设备连接（USR-TCP232、ESP8266 透传、ser2net 等）：地址+端口、3s 连接超时、断线自动提示；收发/日志/多帧全功能复用 | V1.0 ✅ |
 
 ### 1.2 功能优先级
 
 ```
-V1.0   串口收发 + 端口管理（WPF 骨架 + MVVM 模式建立）
+V1.0   串口收发 + 端口管理(含设备名) + TCP 连接 + 会话日志 + 多帧定时发送（WPF 骨架 + MVVM）✅
 V1.1 ★ 协议帧解析引擎 + 校验算法库        ← 核心价值
-V1.2    数据级时序图（ScottPlot）+ 会话日志
-V1.3    循环发送 / 发送历史 / 热插拔 / 多端口标签
+V1.2    数据级时序图（ScottPlot）
+V1.3    发送历史 / 热插拔 / 多端口标签 / 流控（RTS-CTS）
 V2      I2C 后端（FTDI.FTD2XX_NET 官方包）+ 事务解析 + L2 序列图
 V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 预留    电平级波形（L3，逻辑分析仪接入）
@@ -40,34 +41,35 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 
 ## 二、UI 设计
 
-### 2.1 主窗口布局（AvalonDock 停靠式）
+### 2.1 主窗口布局（V1.0 实际：左主列 + 右多帧面板，GridSplitter 可调）
 
 ```
-┌──────────────────────────────────────────────────────┐
-│ [文件] [端口] [工具] [帮助]        状态: ● COM3@115200│
-├──────────┬───────────────────────────────────────────┤
-│ 工具窗格  │ ┌─ 接收区（停靠文档）───────────────────┐ │
-│ ┌────────┤ │ [☑时间戳][HEX▼][☑解析][暂停][清空]  │ │
-│ │端口配置 │ │ ┌─────────────────────────────────┐ │ │
-│ │ COM3 ▼ │ │ │[15:04:05.123] AA 55 01 00 0F   │ │ │
-│ │115200▼ │ │ │  └ 帧头│命令│数据 │ 校验✓      │ │ │
-│ │ 8-N-1  │ │ └─────────────────────────────────┘ │ │
-│ │[打开]  │ ├─ 波形区（停靠文档）──────────────────┤ │
-│ ├────────┤ │ [ScottPlot 时序图]                  │ │
-│ │发送区   │ └─────────────────────────────────────┘ │
-│ │HEX 输入 │ ┌─ 发送区（底部停靠）──────────────────┐ │
-│ │[发送]  │ │ [HEX▼] AA 55 01 00 0F    [发送][循环]│ │
-│ └────────┘ └─────────────────────────────────────┘ │
-├──────────┴───────────────────────────────────────────┤
-│ 状态栏：就绪 │ RX: 1024 │ TX: 128 │ 帧统计: 24/2错  │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│ 串口[COM3▼][刷新] 波特率[115200▼] 数据位[8▼] 停止位[1▼] 校验[无▼] [打开]│
+├────────────────────────────────────────┬─┬──────────────────────┤
+│ 接收区                                  │▎│ 多帧发送（内容｜备注 同行）│
+│ [☑时间戳][☑HEX显示][☑记录日志][日志位置]│▎│ # 内容     备注     HEX周期循环 发送 │
+│ [打开目录][清空]                        │▎│ 1 AA 55 01 复位命令  ☑ 1000 ☐ [发送]│
+│ ┌────────────────────────────────────┐│▎│ 2 read_reg 读寄存器  ☑  500 ☑ [发送]│
+│ │[15:04:05.123] ← AA 55 01 00 0F    ││▎│ ...                   │
+│ │[15:04:05.201] → AA 55 02 00 10    ││▎│                       │
+│ └────────────────────────────────────┘│▎│ [添加][删除选中][清空] │
+├────────────────────────────────────────┤▎│ [添加][删除选中][清空] │
+│ 发送区  [☑HEX发送]                     │▎│                       │
+│ [AA 55 01 00 0F..............] [发送]  │▎│                       │
+├────────────────────────────────────────┴─┴──────────────────────┤
+│ 状态栏: 就绪                          RX: 1024  TX: 128         │
+└────────────────────────────────────────────────────────────────┘
 ```
+
+> V1.2/V1.3 引入 AvalonDock 后，接收区/波形区升级为停靠文档标签页，多帧面板可停靠/浮动。
 
 ### 2.2 布局要点
 
-- **AvalonDock 停靠体系**（IDE 式）：接收区/波形区为文档标签页，端口配置/发送为工具窗格，可拖拽浮动、布局 XML 保存恢复
-- **解析高亮**：接收区支持"帧模式"——按模板着色帧头/命令/数据/校验域，校验失败红色标记
-- **深色主题**：Visual Studio 风格主题（AvalonDock 自带 VS2013 主题 + 自定义深色资源字典）
+- **AvalonDock 停靠体系**（IDE 式，V1.2/V1.3 随多面板引入）：接收区/波形区为文档标签页，端口配置/发送为工具窗格
+- **解析高亮**：接收区支持"帧模式"——按模板着色帧头/命令/数据/校验域，校验失败红色标记（V1.1）
+- **浅色主题（SSCOM 经典风格）**：白色背景 + 标准 Windows 控件观感（用户指定，2026-08-29 由深色改浅色）
+- **统一控件风格体系**：TextBox / ComboBox / Button / CheckBox 全部圆角（4px 框 / 3px 勾选框）+ 蓝色高亮（悬停/聚焦/展开）；全局 28px 控件高度基线保证混排行垂直居中；接收/发送框顶部对齐 + 自动换行 + 纵向刷屏（2026-08-29 UI 打磨定稿）
 - **状态可见**：标题栏连接状态 + 底部状态栏（RX/TX 计数、帧统计）
 
 ### 2.3 后续页面
@@ -82,10 +84,10 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 
 | 阶段 | 内容 | 关键交付物 | 状态 |
 | ---- | ---- | ---------- | ---- |
-| V1.0 | WPF 骨架：项目结构、MVVM 模式（CommunityToolkit）、串口后端（SerialPortStream）、收发控制台 UI、自包含发布脚本 | `SerialTool.sln`、`Backends/SerialBackend.cs`、发布脚本 | 待开工 |
+| V1.0 | WPF 骨架：项目结构、MVVM 模式（CommunityToolkit）、串口后端（SerialPortStream + WMI 设备名）、TCP 后端、收发控制台 UI、会话日志、多帧发送（手动/每帧独立周期循环，JSON 持久化）、自包含发布脚本 | `SerialTool.slnx`、`Backends/SerialBackend.cs`、`Backends/TcpBackend.cs`、`SendFrameViewModel.cs`、发布脚本 | ✅ 完成（2026-08-29：构建零警告、单测 12/12、启动冒烟通过） |
 | V1.1 | 帧解析引擎：帧状态机（粘包/半包）、校验库（CRC 查表）、JSON 模板、解析高亮视图 | `Core/Framing`、`Core/Checksum`、模板编辑器 | 规划 |
-| V1.2 | 波形面板（ScottPlot SignalPlot 实时滚动）+ 日志保存 | `Views/WaveformPanel` | 规划 |
-| V1.3 | 循环发送、发送历史、热插拔（WM_DEVICECHANGE）、多端口标签 | — | 规划 |
+| V1.2 | 波形面板（ScottPlot SignalPlot 实时滚动） | `Views/WaveformPanel` | 规划 |
+| V1.3 | 发送历史、热插拔（WM_DEVICECHANGE）、多端口标签、流控（RTS-CTS） | — | 规划 |
 | V2 | I2C 后端（FTDI.FTD2XX_NET）、扫描/寄存器读写、L2 序列图 | `Backends/I2cBackend.cs` | 规划 |
 | V3 | CAN 后端（PCAN 或 slcan）、DBC 解析、信号曲线 | `Backends/CanBackend.cs`、`Core/Dbc` | 规划 |
 | 预留 | 电平波形（L3）：逻辑分析仪 SDK（Saleae API 等）独立 `Daq/` 模块 | — | 待硬件 |
@@ -94,34 +96,40 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 
 ```
 SerialTool/
-├── SerialTool.sln
+├── SerialTool.slnx                # .NET 10 XML 解决方案格式
 ├── src/
-│   ├── SerialTool.App/            # WPF 主程序（视图、视图模型、AvalonDock 布局）
-│   ├── SerialTool.Core/           # 解析引擎（纯 C# 类库）：Framing / Checksum / Templates / DBC(V3)
-│   └── SerialTool.Backends/       # 硬件后端：IBusBackend 接口 + Serial / I2c / Can 实现
+│   ├── SerialTool.App/            # WPF 主程序（视图、视图模型；AvalonDock 随 V1.2/V1.3 多面板引入）
+│   ├── SerialTool.Core/           # 解析引擎（纯 C# 类库）：Hex 工具 / Framing(V1.1) / Checksum(V1.1) / Templates(V1.1) / DBC(V3)
+│   └── SerialTool.Backends/       # 硬件后端：IBusBackend 接口 + Serial/Tcp(V1) / I2c(V2) / Can(V3)
 ├── tests/
-│   └── SerialTool.Core.Tests/     # xUnit 单测（校验向量、粘包/半包、模板往返）
+│   └── SerialTool.Core.Tests/     # xUnit 单测（Hex 12 用例；V1.1 加校验向量、粘包/半包）
 ├── scripts/
 │   └── publish.ps1                # dotnet publish 自包含单文件（win-x64）
 └── Docs/
 ```
 
-### 3.2 统一后端接口
+### 3.2 统一后端接口（V1.0 已实现）
 
 ```csharp
+// 总线无关核心接口
 public interface IBusBackend : IDisposable
 {
     string Name { get; }
-    IReadOnlyList<Device_info> Scan();          // 设备枚举（含 VID/PID）
-    void Open(DeviceConfig cfg);
-    void Write(ReadOnlySpan<byte> data);
-    event EventHandler<TimedData> DataReceived; // {Timestamp, Bytes} 事件流
+    bool IsOpen { get; }
+    IReadOnlyList<DeviceInfo> Scan();
+    event EventHandler<TimedData>? DataReceived;  // {Timestamp, Bytes} 事件流（读取线程触发）
+    event EventHandler<string>? ErrorOccurred;    // 拔出/断线等异常中断
+    void Write(ReadOnlySpan<byte> data);          // 写入（各总线通用，上移至基接口）
     void Close();
 }
+
+// 总线特有的打开参数放各自后端接口（避免参数异构塞基接口）
+public interface ISerialBackend : IBusBackend { void Open(SerialPortConfig cfg); }
+public interface ITcpBackend : IBusBackend    { void Open(TcpConfig cfg); }      // Host/Port
 ```
 
-- 三类总线同构，UI 层通过总线类型 ViewModel 适配不同面板
-- SerialBackend（V1）→ I2cBackend（V2）→ CanBackend（V3）插拔扩展
+- UI 通过"当前活动连接 _active"统一操作串口/TCP，收发/日志/多帧零差异
+- SerialBackend / TcpBackend（V1 ✅）→ I2cBackend（V2）→ CanBackend（V3）插拔扩展
 
 ### 3.3 关键技术要点
 

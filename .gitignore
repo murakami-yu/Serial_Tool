@@ -1,46 +1,11 @@
-﻿# ---- 构建产物 ----
+# .NET 构建产物
+bin/
+obj/
 dist/
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-/serial-tool
-/serial-tool-*
+.vs/
+*.user
+*.suo
 
-# ---- Go 工作区（按需启用）----
-# go.work
-# go.work.sum
-
-# ---- 编辑器 / IDE ----
+# Rider/VS Code
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
-*.sublime-workspace
-*.sublime-project
-
-# ---- 环境与密钥 ----
-.env
-.env.*
-!.env.example
-
-# ---- 日志与临时文件 ----
-*.log
-logs/
-tmp/
-*.tmp
-
-# ---- 操作系统 ----
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
