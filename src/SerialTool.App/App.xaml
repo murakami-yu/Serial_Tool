@@ -214,17 +214,41 @@
             </Setter>
         </Style>
 
+        <!-- 分组框：圆角卡片样式（原生模板不支持圆角，需自定义） -->
         <Style TargetType="GroupBox">
             <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GroupBox">
+                        <Border CornerRadius="6"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                SnapsToDevicePixels="True">
+                            <DockPanel>
+                                <ContentPresenter DockPanel.Dock="Top"
+                                                  ContentSource="Header"
+                                                  Margin="10,7,10,5"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"
+                                                  RecognizesAccessKey="True"/>
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                            </DockPanel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
+        <!-- 表格：填充全透明（由外层圆角包裹层提供白底和圆角框，避免直角色块盖住圆角） -->
         <Style TargetType="DataGrid">
-            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="RowBackground" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-            <Setter Property="RowBackground" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="GridLinesVisibility" Value="Horizontal"/>
             <Setter Property="HorizontalGridLinesBrush" Value="#E6E6E6"/>
             <Setter Property="AutoGenerateColumns" Value="False"/>
@@ -232,13 +256,83 @@
             <Setter Property="SelectionMode" Value="Single"/>
         </Style>
 
+        <!-- 表头：透明带 + 底部分隔线（不画色块，圆角由外层框呈现） -->
         <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F0F0F0"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
-            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Padding" Value="6,6"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="FontWeight" Value="Normal"/>
+        </Style>
+
+        <!-- 分隔条：平时隐形，悬停显示灰色圆角手柄，拖动时蓝色 -->
+        <Style TargetType="GridSplitter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="Transparent">
+                            <Border x:Name="Handle" CornerRadius="2" Width="4"
+                                    HorizontalAlignment="Center" Margin="0,10"
+                                    Background="Transparent"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Handle" Property="Background" Value="#B8B8B8"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Handle" Property="Background" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 迷你滚动条：透明轨道 + 圆角滑块（全局生效：表格/接收框/输入框） -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="#B8B8B8"/>
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb x:Name="Thumb" Background="{TemplateBinding Background}">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border CornerRadius="4"
+                                                        Background="{TemplateBinding Background}"
+                                                        Margin="2,3"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Thumb" Property="Background" Value="#8A8A8A"/>
+                            </Trigger>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter Property="Width" Value="Auto"/>
+                                <Setter Property="Height" Value="10"/>
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <!-- 内容不足时 ScrollViewer 会禁用滚动条并保留占位（Auto→Hidden），
+                     把禁用态尺寸清零，彻底收起空轨道竖缝 -->
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Width" Value="0"/>
+                    <Setter Property="Height" Value="0"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <!-- 表格行：选中不高亮（保持干净，选中项仍可被"删除选中"使用） -->

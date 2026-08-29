@@ -23,6 +23,21 @@ namespace SerialTool.App.ViewModels;
 /// <param name="IsTx">true = 本机发送（显示 →）。</param>
 public sealed record RxItem(DateTime Ts, byte[] Bytes, bool IsTx);
 
+/// <summary>接收框渲染指令（事件驱动，视图直接操作文本以保留滚动位置）。</summary>
+public enum RxRenderKind
+{
+    /// <summary>追加新内容（不重置滚动）。</summary>
+    Append,
+
+    /// <summary>清空。</summary>
+    Clear,
+
+    /// <summary>全量重绘（显示模式切换），视图恢复原滚动位置。</summary>
+    Full,
+}
+
+public sealed record RxRender(RxRenderKind Kind, string Text);
+
 /// <summary>主窗口视图模型：端口管理 + 收发控制台。</summary>
 public partial class MainViewModel : ObservableObject, IDisposable
 {
@@ -79,7 +94,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _isPortOpen;
 
     [ObservableProperty]
-    private string _rxText = string.Empty;
+    private bool _autoScroll = true;
+
+    /// <summary>右侧多帧面板是否显示（持久化到 Config/ui_settings.json）。</summary>
+    [ObservableProperty]
+    private bool _showFramesPanel = true;
 
     [ObservableProperty]
     private string _txInput = string.Empty;
@@ -109,6 +128,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string _logFilePath = DefaultLogPath();
 
     public bool IsPortClosed => !IsPortOpen;
+
+    /// <summary>接收框渲染事件：视图订阅后直接操作 TextBox（追加保留滚动位置）。</summary>
+    public event EventHandler<RxRender>? RxRendered;
 
     public IReadOnlyList<int> BaudRates { get; } = new[]
         { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
@@ -151,6 +173,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try { Directory.CreateDirectory(System.IO.Path.GetDirectoryName(LogFilePath)!); }
         catch { /* 目录创建失败时打开按钮会提示 */ }
 
+        LoadUiSettings();
         _ = LoadPortsAsync();
         LoadFrames();
     }
@@ -427,13 +450,51 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    // ---------- UI 设置持久化 ----------
+
+    private sealed record UiSettings(bool ShowFramesPanel);
+
+    private static string UiSettingsPath
+        => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
+
+    private void LoadUiSettings()
+    {
+        try
+        {
+            if (File.Exists(UiSettingsPath))
+            {
+                var s = JsonSerializer.Deserialize<UiSettings>(File.ReadAllText(UiSettingsPath));
+                if (s is not null)
+                    ShowFramesPanel = s.ShowFramesPanel;
+            }
+        }
+        catch
+        {
+            // 设置损坏时使用默认值
+        }
+    }
+
+    partial void OnShowFramesPanelChanged(bool value)
+    {
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
+            File.WriteAllText(UiSettingsPath,
+                JsonSerializer.Serialize(new UiSettings(value), new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+            // 保存失败不影响功能
+        }
+    }
+
     [RelayCommand]
     private void ClearRx()
     {
         _lines.Clear();
-        RxText = string.Empty;
         RxCount = 0;
         TxCount = 0;
+        RxRendered?.Invoke(this, new RxRender(RxRenderKind.Clear, string.Empty));
     }
 
     // ---------- 日志 ----------
@@ -511,7 +572,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Interlocked.Add(ref _pendingRxBytes, e.Bytes.Length);
     }
 
-    /// <summary>UI 定时批量投递：高波特率下避免逐字节刷新；同时把新行落盘。</summary>
+    /// <summary>UI 定时批量投递：高波特率下避免逐字节刷新；同时把新行落盘。
+    /// 渲染走追加事件（不整体重置文本，保留用户滚动位置）。</summary>
     private void FlushRx(object? sender, EventArgs e)
     {
         if (_rxQueue.IsEmpty) return;
@@ -526,10 +588,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _lines.RemoveAt(0);
 
         RxCount += Interlocked.Exchange(ref _pendingRxBytes, 0);
-        if (_logger.IsActive)
-            foreach (var item in newItems)
-                _logger.WriteLine(FormatLine(item));
-        RebuildRxText();
+
+        var sb = new System.Text.StringBuilder(newItems.Count * 32);
+        foreach (var item in newItems)
+        {
+            var line = FormatLine(item);
+            if (_logger.IsActive)
+                _logger.WriteLine(line);
+            sb.Append(line).Append('\n');
+        }
+        RxRendered?.Invoke(this, new RxRender(RxRenderKind.Append, sb.ToString()));
     }
 
     /// <summary>单行格式化：[时间戳] 方向 数据（显示与日志共用）。</summary>
@@ -543,12 +611,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return sb.ToString();
     }
 
-    private void RebuildRxText()
+    /// <summary>全量文本（显示模式切换时全量重绘用）。</summary>
+    private string BuildFullText()
     {
         var sb = new System.Text.StringBuilder(_lines.Count * 32);
         foreach (var item in _lines)
-            sb.AppendLine(FormatLine(item));
-        RxText = sb.ToString();
+            sb.Append(FormatLine(item)).Append('\n');
+        return sb.ToString();
     }
 
     private void OnBackendError(object? sender, string msg)
@@ -583,7 +652,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 RemoveSelectedFrameCommand.NotifyCanExecuteChanged();
                 break;
             case nameof(ShowHex) or nameof(ShowTimestamp):
-                RebuildRxText();
+                // 显示模式切换：全量重绘，视图恢复原滚动位置
+                RxRendered?.Invoke(this, new RxRender(RxRenderKind.Full, BuildFullText()));
                 break;
             case nameof(LogEnabled):
                 if (LogEnabled)

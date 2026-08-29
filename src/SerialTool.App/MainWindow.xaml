@@ -14,7 +14,7 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" MinWidth="420"/>
             <ColumnDefinition Width="8"/>
-            <ColumnDefinition Width="500" MinWidth="380"/>
+            <ColumnDefinition x:Name="RightColumnDef" Width="500"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -88,6 +88,10 @@
                     </Style>
                 </Button.Style>
             </Button>
+
+            <CheckBox Content="多帧面板" IsChecked="{Binding ShowFramesPanel}" Margin="20,0,0,0"
+                      Checked="FramesPanelToggle_Changed" Unchecked="FramesPanelToggle_Changed"
+                      ToolTip="显示 / 隐藏右侧多帧发送面板（状态记忆）"/>
         </WrapPanel>
 
         <!-- ===== 接收区（左列） ===== -->
@@ -97,17 +101,19 @@
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
                     <CheckBox Content="时间戳" IsChecked="{Binding ShowTimestamp}"/>
                     <CheckBox Content="HEX 显示" IsChecked="{Binding ShowHex}" Margin="16,0,0,0"/>
+                    <CheckBox Content="跟随最新" IsChecked="{Binding AutoScroll}" Margin="16,0,0,0"
+                              Checked="AutoScroll_OnChecked"
+                              ToolTip="勾选：新数据自动滚到底部（鼠标悬停在框上时暂停，便于查看当前行）；取消：不再自动滚动"/>
                     <CheckBox Content="记录日志" IsChecked="{Binding LogEnabled}" Margin="16,0,0,0"
                               ToolTip="{Binding LogFilePath}"/>
                     <Button Content="日志位置" Command="{Binding BrowseLogCommand}" Margin="8,0,0,0"/>
                     <Button Content="打开目录" Command="{Binding OpenLogFolderCommand}" Margin="8,0,0,0"/>
                     <Button Content="清空" Command="{Binding ClearRxCommand}" Margin="24,0,0,0"/>
                 </StackPanel>
-                <TextBox Style="{StaticResource Mono}"
-                         Text="{Binding RxText, Mode=OneWay}" IsReadOnly="True"
+                <TextBox x:Name="RxOutput" Style="{StaticResource Mono}" IsReadOnly="True"
                          TextWrapping="Wrap" VerticalContentAlignment="Top"
                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                         TextChanged="RxOutput_TextChanged"/>
+                         MouseLeave="RxOutput_MouseLeave"/>
             </DockPanel>
         </GroupBox>
 
@@ -130,14 +136,14 @@
             </DockPanel>
         </GroupBox>
 
-        <!-- ===== 分隔条：拖动调整右栏宽度 ===== -->
-        <GridSplitter Grid.Row="1" Grid.RowSpan="2" Grid.Column="1" Width="8"
+        <!-- ===== 分隔条：拖动调整右栏宽度（平时隐形，悬停显示手柄） ===== -->
+        <GridSplitter x:Name="FramesSplitter" Grid.Row="1" Grid.RowSpan="2" Grid.Column="1" Width="8"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                      Background="{StaticResource BorderBrush}" ShowsPreview="True"
-                      ResizeDirection="Columns" Focusable="False"/>
+                      ResizeDirection="Columns" Focusable="False"
+                      Cursor="SizeWE"/>
 
-        <!-- ===== 多帧发送（右列，纵向占满） ===== -->
-        <GroupBox Grid.Row="1" Grid.RowSpan="2" Grid.Column="2"
+        <!-- ===== 多帧发送（右列，纵向占满；可通过工具栏开关隐藏） ===== -->
+        <GroupBox x:Name="FramesPanel" Grid.Row="1" Grid.RowSpan="2" Grid.Column="2"
                   Header="多帧发送（勾选循环按周期发送，最小 50ms）"
                   BorderBrush="{StaticResource BorderBrush}" Margin="10,0,0,0">
             <DockPanel Margin="4">
@@ -146,6 +152,12 @@
                     <Button Content="删除选中" Command="{Binding RemoveSelectedFrameCommand}" Margin="8,0,0,0"/>
                     <Button Content="清空" Command="{Binding ClearFramesCommand}" Margin="8,0,0,0"/>
                 </StackPanel>
+                <!-- 表格圆角框：包裹层提供白底 + 圆角边框（DataGrid 自身透明填充） -->
+                <Border CornerRadius="6"
+                        Background="{StaticResource PanelBrush}"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1" Margin="0,2,0,0"
+                        SnapsToDevicePixels="True">
                 <DataGrid ItemsSource="{Binding SendFrames}"
                           SelectedItem="{Binding SelectedFrame}"
                           VerticalScrollBarVisibility="Auto">
@@ -214,6 +226,7 @@
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
+                </Border>
             </DockPanel>
         </GroupBox>
 
