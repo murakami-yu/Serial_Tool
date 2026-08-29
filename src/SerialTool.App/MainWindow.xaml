@@ -4,17 +4,18 @@
         xmlns:vm="clr-namespace:SerialTool.App.ViewModels"
         Title="Serial Tool — 通用串口调试工具"
         Width="1200" Height="740" MinWidth="1000" MinHeight="560"
+        SizeChanged="MainWindow_SizeChanged"
         Background="{StaticResource BgBrush}"
         WindowStartupLocation="CenterScreen">
     <Window.DataContext>
         <vm:MainViewModel/>
     </Window.DataContext>
 
-    <Grid Margin="12">
+    <Grid x:Name="RootGrid" Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" MinWidth="420"/>
-            <ColumnDefinition Width="8"/>
-            <ColumnDefinition x:Name="RightColumnDef" Width="500"/>
+            <ColumnDefinition x:Name="LeftColumnDef" Width="*" MinWidth="420"/>
+            <ColumnDefinition x:Name="SplitterColumnDef" Width="8"/>
+            <ColumnDefinition x:Name="RightColumnDef" Width="500" MinWidth="500"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -23,145 +24,183 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- ===== 工具栏：连接方式 + 参数（横跨全宽） ===== -->
-        <WrapPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,0,0,10">
-            <TextBlock Text="连接" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-            <ComboBox SelectedIndex="{Binding ConnTypeIndex}" Width="72" Margin="6,0,12,0">
-                <ComboBoxItem Content="串口"/>
-                <ComboBoxItem Content="TCP"/>
-            </ComboBox>
+        <!-- ===== 顶部功能条（独立框单行）：帧解析组 | 接收显示组，位置固定不受窗口缩放影响 ===== -->
+        <GroupBox Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Header="帧解析 · 接收显示"
+                  BorderBrush="{StaticResource BorderBrush}" Foreground="{StaticResource MutedBrush}">
+            <StackPanel Orientation="Horizontal" Margin="4">
+                <!-- 帧解析组 -->
+                <CheckBox Content="启用" IsChecked="{Binding ParseEnabled}" VerticalAlignment="Center"
+                          ToolTip="按模板解析接收字节流，按帧结构化显示（粘包/半包自动处理；多个启用模板并行仲裁）"/>
+                <ComboBox ItemsSource="{Binding Templates}"
+                          SelectedItem="{Binding SelectedTemplate}"
+                          DisplayMemberPath="Name" Width="150" Margin="10,0,0,0"
+                          VerticalAlignment="Center"
+                          ToolTip="当前查看的模板"/>
+                <Button Content="模板…" Command="{Binding OpenTemplateEditorCommand}" Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        ToolTip="编辑协议帧模板（编辑器中勾选「启用」的模板并行参与解析）"/>
 
-            <!-- 串口参数（仅串口模式显示；下拉含设备名，如 COM3 · USB-SERIAL CH340） -->
-            <WrapPanel Visibility="{Binding IsSerial, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="串口" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                <ComboBox ItemsSource="{Binding PortItems}"
-                          SelectedItem="{Binding SelectedDevice}"
-                          DisplayMemberPath="DisplayName"
-                          Width="230" Margin="6,0,4,0"/>
-                <Button Content="刷新" Command="{Binding RefreshPortsCommand}" Margin="0,0,12,0"/>
+                <!-- 分隔竖线 -->
+                <Rectangle Width="1" Margin="16,2" Fill="{StaticResource BorderBrush}"
+                           VerticalAlignment="Stretch"/>
 
-                <TextBlock Text="波特率" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                <ComboBox ItemsSource="{Binding BaudRates}"
-                          SelectedItem="{Binding SelectedBaud}"
-                          Margin="6,0,12,0"/>
+                <!-- 接收显示组 -->
+                <CheckBox Content="时间戳" IsChecked="{Binding ShowTimestamp}" Margin="4,0,0,0"
+                          VerticalAlignment="Center"/>
+                <CheckBox Content="HEX 显示" IsChecked="{Binding ShowHex}" Margin="12,0,0,0"
+                          VerticalAlignment="Center"/>
+                <CheckBox Content="跟随最新" IsChecked="{Binding AutoScroll}" Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Checked="AutoScroll_OnChecked"
+                          ToolTip="勾选：新数据自动滚到底部（鼠标悬停在框上时暂停，便于查看当前行）；取消：不再自动滚动"/>
+                <CheckBox Content="记录日志" IsChecked="{Binding LogEnabled}" Margin="12,0,0,0"
+                          VerticalAlignment="Center" ToolTip="{Binding LogFilePath}"/>
+                <Button Content="日志位置" Command="{Binding BrowseLogCommand}" Margin="16,0,0,0"/>
+                <Button Content="打开目录" Command="{Binding OpenLogFolderCommand}" Margin="8,0,0,0"/>
+                <Button Content="清空" Command="{Binding ClearRxCommand}" Margin="8,0,0,0"/>
+            </StackPanel>
+        </GroupBox>
 
-                <TextBlock Text="数据位" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                <ComboBox ItemsSource="{Binding DataBitsOptions}"
-                          SelectedItem="{Binding SelectedDataBits}"
-                          Margin="6,0,12,0"/>
-
-                <TextBlock Text="停止位" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                <ComboBox ItemsSource="{Binding StopBitsOptions}"
-                          SelectedIndex="{Binding SelectedStopBitsIndex}"
-                          Margin="6,0,12,0"/>
-
-                <TextBlock Text="校验" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                <ComboBox ItemsSource="{Binding ParityOptions}"
-                          SelectedIndex="{Binding SelectedParityIndex}"
-                          Margin="6,0,12,0"/>
-            </WrapPanel>
-
-            <!-- TCP 参数（仅 TCP 模式显示） -->
-            <WrapPanel Visibility="{Binding IsTcp, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="地址" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                <TextBox Text="{Binding TcpHost, UpdateSourceTrigger=PropertyChanged}"
-                         Width="130" Margin="6,0,12,0" VerticalAlignment="Center"
-                         ToolTip="串口服务器 / TCP 透传设备地址"/>
-                <TextBlock Text="端口" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                <TextBox Text="{Binding TcpPort, UpdateSourceTrigger=PropertyChanged}"
-                         Width="70" Margin="6,0,12,0" VerticalAlignment="Center"/>
-            </WrapPanel>
-
-            <Button Command="{Binding TogglePortCommand}" FontWeight="Bold" Foreground="White">
-                <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsPortOpen}" Value="True">
-                                <Setter Property="Content" Value="断开"/>
-                                <Setter Property="Background" Value="{StaticResource DangerBrush}"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsPortOpen}" Value="False">
-                                <Setter Property="Content" Value="连接"/>
-                                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
-
-            <CheckBox Content="多帧面板" IsChecked="{Binding ShowFramesPanel}" Margin="20,0,0,0"
-                      Checked="FramesPanelToggle_Changed" Unchecked="FramesPanelToggle_Changed"
-                      ToolTip="显示 / 隐藏右侧多帧发送面板（状态记忆）"/>
-        </WrapPanel>
-
-        <!-- ===== 接收区（左列） ===== -->
+        <!-- ===== 接收区（左列，占满剩余高度；纯数据展示） ===== -->
         <GroupBox Grid.Row="1" Grid.Column="0" Header="接收区" BorderBrush="{StaticResource BorderBrush}"
-                  Foreground="{StaticResource MutedBrush}">
-            <DockPanel Margin="4">
-                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                    <CheckBox Content="时间戳" IsChecked="{Binding ShowTimestamp}"/>
-                    <CheckBox Content="HEX 显示" IsChecked="{Binding ShowHex}" Margin="16,0,0,0"/>
-                    <CheckBox Content="跟随最新" IsChecked="{Binding AutoScroll}" Margin="16,0,0,0"
-                              Checked="AutoScroll_OnChecked"
-                              ToolTip="勾选：新数据自动滚到底部（鼠标悬停在框上时暂停，便于查看当前行）；取消：不再自动滚动"/>
-                    <CheckBox Content="记录日志" IsChecked="{Binding LogEnabled}" Margin="16,0,0,0"
-                              ToolTip="{Binding LogFilePath}"/>
-                    <Button Content="日志位置" Command="{Binding BrowseLogCommand}" Margin="8,0,0,0"/>
-                    <Button Content="打开目录" Command="{Binding OpenLogFolderCommand}" Margin="8,0,0,0"/>
-                    <Button Content="清空" Command="{Binding ClearRxCommand}" Margin="24,0,0,0"/>
-
-                    <CheckBox Content="帧解析" IsChecked="{Binding ParseEnabled}" Margin="24,0,0,0"
-                              ToolTip="按模板解析接收字节流，按帧结构化显示（粘包/半包自动处理）"/>
-                    <ComboBox ItemsSource="{Binding Templates}"
-                              SelectedItem="{Binding SelectedTemplate}"
-                              DisplayMemberPath="Name" Width="150" Margin="8,0,0,0"/>
-                    <Button Content="模板…" Command="{Binding OpenTemplateEditorCommand}" Margin="8,0,0,0"
-                            ToolTip="编辑协议帧模板"/>
-                </WrapPanel>
-                <TextBox x:Name="RxOutput" Style="{StaticResource Mono}" IsReadOnly="True"
-                         TextWrapping="Wrap" VerticalContentAlignment="Top"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                         MouseLeave="RxOutput_MouseLeave"/>
-            </DockPanel>
-        </GroupBox>
-
-        <!-- ===== 发送区（左列） ===== -->
-        <GroupBox Grid.Row="2" Grid.Column="0" Header="发送区" BorderBrush="{StaticResource BorderBrush}"
                   Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0">
-            <DockPanel Margin="4">
-                <StackPanel DockPanel.Dock="Right" Orientation="Vertical" Margin="10,0,0,0">
-                    <CheckBox Content="HEX 发送" IsChecked="{Binding TxHexMode}" HorizontalAlignment="Center"/>
-                    <Button Content="发送" Command="{Binding SendCommand}"
-                            FontWeight="Bold" Margin="0,8,0,0"/>
-                </StackPanel>
-                <TextBox Style="{StaticResource Mono}"
-                         Text="{Binding TxInput, UpdateSourceTrigger=PropertyChanged}"
-                         Height="72" VerticalContentAlignment="Top"
-                         TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                         KeyDown="TxInput_KeyDown"
-                         ToolTip="HEX 模式示例: AA 55 01 00 0F（容忍空格/逗号/换行）"/>
-            </DockPanel>
+            <TextBox x:Name="RxOutput" Style="{StaticResource Mono}" IsReadOnly="True"
+                     Margin="4" TextWrapping="Wrap" VerticalContentAlignment="Top"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                     MouseLeave="RxOutput_MouseLeave"/>
         </GroupBox>
+
+        <!-- ===== 底部条（横跨全宽）：发送区 + 串口配置两排 ===== -->
+        <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 发送区 -->
+            <GroupBox Grid.Column="0" Header="发送区" BorderBrush="{StaticResource BorderBrush}"
+                      Foreground="{StaticResource MutedBrush}">
+                <DockPanel Margin="4">
+                    <!-- 右侧按钮列：HEX 贴顶、发送贴底，与输入框上下边对齐 -->
+                    <DockPanel DockPanel.Dock="Right" Margin="10,0,0,0">
+                        <CheckBox DockPanel.Dock="Top" Content="HEX 发送" IsChecked="{Binding TxHexMode}"
+                                  HorizontalAlignment="Center"/>
+                        <Button DockPanel.Dock="Bottom" Content="发送" Command="{Binding SendCommand}"
+                                FontWeight="Bold"/>
+                        <!-- 末位占位：避免"发送"被当作 fill 拉伸 -->
+                        <Rectangle/>
+                    </DockPanel>
+                    <!-- 输入框填满剩余高度（72 保底），底边与串口配置第二排齐平 -->
+                    <TextBox Style="{StaticResource Mono}"
+                             Text="{Binding TxInput, UpdateSourceTrigger=PropertyChanged}"
+                             MinHeight="72" VerticalContentAlignment="Top"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                             KeyDown="TxInput_KeyDown"
+                             ToolTip="HEX 模式示例: AA 55 01 00 0F（容忍空格/逗号/换行）"/>
+                </DockPanel>
+            </GroupBox>
+
+            <!-- 串口配置：第一排连接方式+端口+连接按钮，第二排通信参数；整块垂直居中 -->
+            <GroupBox Grid.Column="2" Header="串口配置" BorderBrush="{StaticResource BorderBrush}"
+                      Foreground="{StaticResource MutedBrush}">
+                <StackPanel Margin="4" VerticalAlignment="Center">
+                    <WrapPanel>
+                        <TextBlock Text="连接" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox SelectedIndex="{Binding ConnTypeIndex}" Width="72" Margin="6,0,0,0"
+                                  VerticalAlignment="Center">
+                            <ComboBoxItem Content="串口"/>
+                            <ComboBoxItem Content="TCP"/>
+                        </ComboBox>
+
+                        <!-- 串口模式：下拉含设备名，如 COM3 · USB-SERIAL CH340 -->
+                        <StackPanel Orientation="Horizontal" Margin="14,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IsSerial, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="串口" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                            <ComboBox ItemsSource="{Binding PortItems}"
+                                      SelectedItem="{Binding SelectedDevice}"
+                                      DisplayMemberPath="DisplayName"
+                                      Width="230" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                            <Button Content="刷新" Command="{Binding RefreshPortsCommand}" Margin="8,0,0,0"/>
+                        </StackPanel>
+
+                        <!-- TCP 模式 -->
+                        <StackPanel Orientation="Horizontal" Margin="14,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IsTcp, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="地址" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBox Text="{Binding TcpHost, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="130" Margin="6,0,0,0" VerticalAlignment="Center"
+                                     ToolTip="串口服务器 / TCP 透传设备地址"/>
+                            <TextBlock Text="端口" VerticalAlignment="Center" Margin="12,0,0,0"
+                                       Foreground="{StaticResource MutedBrush}"/>
+                            <TextBox Text="{Binding TcpPort, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="70" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <Button Command="{Binding TogglePortCommand}" FontWeight="Bold" Foreground="White"
+                                Margin="14,0,0,0" VerticalAlignment="Center">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPortOpen}" Value="True">
+                                            <Setter Property="Content" Value="断开"/>
+                                            <Setter Property="Background" Value="{StaticResource DangerBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsPortOpen}" Value="False">
+                                            <Setter Property="Content" Value="连接"/>
+                                            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </WrapPanel>
+
+                    <!-- 第二排：通信参数（仅串口模式；TCP 模式整排隐藏） -->
+                    <WrapPanel Margin="0,8,0,0"
+                               Visibility="{Binding IsSerial, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="波特率" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox ItemsSource="{Binding BaudRates}"
+                                  SelectedItem="{Binding SelectedBaud}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="数据位" VerticalAlignment="Center" Margin="14,0,0,0"
+                                   Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox ItemsSource="{Binding DataBitsOptions}"
+                                  SelectedItem="{Binding SelectedDataBits}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="停止位" VerticalAlignment="Center" Margin="14,0,0,0"
+                                   Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox ItemsSource="{Binding StopBitsOptions}"
+                                  SelectedIndex="{Binding SelectedStopBitsIndex}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="校验" VerticalAlignment="Center" Margin="14,0,0,0"
+                                   Foreground="{StaticResource MutedBrush}"/>
+                        <ComboBox ItemsSource="{Binding ParityOptions}"
+                                  SelectedIndex="{Binding SelectedParityIndex}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </WrapPanel>
+                </StackPanel>
+            </GroupBox>
+        </Grid>
 
         <!-- ===== 分隔条：拖动调整右栏宽度（平时隐形，悬停显示手柄） ===== -->
-        <GridSplitter x:Name="FramesSplitter" Grid.Row="1" Grid.RowSpan="2" Grid.Column="1" Width="8"
+        <GridSplitter x:Name="FramesSplitter" Grid.Row="1" Grid.Column="1" Width="8"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                       ResizeDirection="Columns" Focusable="False"
                       Cursor="SizeWE"/>
 
-        <!-- ===== 多帧发送（右列，纵向占满；可通过工具栏开关隐藏） ===== -->
-        <GroupBox x:Name="FramesPanel" Grid.Row="1" Grid.RowSpan="2" Grid.Column="2"
+        <!-- ===== 多帧发送（右列，与接收区同高；可通过状态栏开关隐藏） ===== -->
+        <GroupBox x:Name="FramesPanel" Grid.Row="1" Grid.Column="2"
                   Header="多帧发送（勾选循环按周期发送，最小 50ms）"
-                  BorderBrush="{StaticResource BorderBrush}" Margin="10,0,0,0">
-            <DockPanel Margin="4">
-                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
-                    <Button Content="添加" Command="{Binding AddFrameCommand}"/>
-                    <Button Content="删除选中" Command="{Binding RemoveSelectedFrameCommand}" Margin="8,0,0,0"/>
-                    <Button Content="清空" Command="{Binding ClearFramesCommand}" Margin="8,0,0,0"/>
-                </StackPanel>
+                  BorderBrush="{StaticResource BorderBrush}" Margin="10,10,0,0">
+            <!-- 表格占剩余高度（出滚动条），按钮排固定在底部，窗口再矮也不会被挤出去 -->
+            <Grid Margin="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
                 <!-- 表格圆角框：包裹层提供白底 + 圆角边框（DataGrid 自身透明填充） -->
-                <Border CornerRadius="6"
+                <Border Grid.Row="0" CornerRadius="6"
                         Background="{StaticResource PanelBrush}"
                         BorderBrush="{StaticResource BorderBrush}"
                         BorderThickness="1" Margin="0,2,0,0"
@@ -181,7 +220,7 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <DataGridTemplateColumn Header="内容" Width="1.6*">
+                        <DataGridTemplateColumn Header="内容" Width="1.6*" MinWidth="120">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBox Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
@@ -190,7 +229,7 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="备注" Width="*">
+                        <DataGridTemplateColumn Header="备注" Width="*" MinWidth="80">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
@@ -235,7 +274,13 @@
                     </DataGrid.Columns>
                 </DataGrid>
                 </Border>
-            </DockPanel>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Content="添加" Command="{Binding AddFrameCommand}"/>
+                    <Button Content="删除选中" Command="{Binding RemoveSelectedFrameCommand}" Margin="8,0,0,0"/>
+                    <Button Content="清空" Command="{Binding ClearFramesCommand}" Margin="8,0,0,0"/>
+                </StackPanel>
+            </Grid>
         </GroupBox>
 
         <!-- ===== 状态栏（横跨全宽） ===== -->
@@ -243,13 +288,19 @@
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                 Margin="0,10,0,0" Padding="0,6,0,0">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Right" Foreground="{StaticResource MutedBrush}">
+                <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}">
                     <Run Text="RX: "/><Run Text="{Binding RxCount, Mode=OneWay}"/>
                     <Run Text="  TX: "/><Run Text="{Binding TxCount, Mode=OneWay}"/>
                     <Run Text="  帧✓ "/><Run Text="{Binding FrameOkCount, Mode=OneWay}"/>
                     <Run Text=" / ✗ "/><Run Text="{Binding FrameErrCount, Mode=OneWay}"/>
                 </TextBlock>
-                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource MutedBrush}"/>
+                <CheckBox DockPanel.Dock="Right" Content="多帧面板" IsChecked="{Binding ShowFramesPanel}"
+                          Margin="0,0,16,0" VerticalAlignment="Center"
+                          Checked="FramesPanelToggle_Changed" Unchecked="FramesPanelToggle_Changed"
+                          ToolTip="显示 / 隐藏右侧多帧发送面板（状态记忆）"/>
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}"/>
             </DockPanel>
         </Border>
     </Grid>
