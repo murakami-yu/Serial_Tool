@@ -40,13 +40,27 @@ public enum RxRenderKind
 
 public sealed record RxRender(RxRenderKind Kind, string Text);
 
+/// <summary>波形跳变点：时刻 + 新电平（逻辑分析仪式逐位重建）。</summary>
+public sealed record WavePt(double T, double Y);
+
 /// <summary>主窗口视图模型：端口管理 + 收发控制台。</summary>
 public partial class MainViewModel : ObservableObject, IDisposable
 {
     private const int MaxLines = 2000;      // 行缓冲上限（超出丢弃最旧行）
     private const int FlushIntervalMs = 50; // UI 批量刷新周期
     private const int CyclicTickMs = 50;    // 循环发送调度粒度（也是最小周期）
+    private const int MaxWavePoints = 60_000;   // 波形跳变点上限（超出丢最旧一半）
+    private const int WaveTrimKeep = 30_000;
+    private const double TcpNominalBaud = 115200; // TCP 模式无波特率，按标称值重建位宽
     private readonly DispatcherTimer _cyclicTimer;
+
+    // 逻辑分析仪式波形：RX/TX 双通道电平跳变序列（读取线程写、UI 线程读快照）
+    private readonly object _waveLock = new();
+    private readonly List<WavePt> _rxWave = new();
+    private readonly List<WavePt> _txWave = new();
+    private double _rxPrev = 1; // 空闲高电平
+    private double _txPrev = 1;
+    private DateTime _waveStart = DateTime.Now;
 
     private readonly SerialBackend _serialBackend = new();
     private readonly TcpBackend _tcpBackend = new();
@@ -102,6 +116,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showFramesPanel = true;
 
+    /// <summary>时序图面板是否显示（持久化）。</summary>
+    [ObservableProperty]
+    private bool _showWavePanel = true;
+
+    /// <summary>时序图是否跟随最新（持久化；取消后可自由缩放平移）。</summary>
+    [ObservableProperty]
+    private bool _waveFollow = true;
+
     // ---------- 帧解析 ----------
 
     [ObservableProperty]
@@ -152,6 +174,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>接收框渲染事件：视图订阅后直接操作 TextBox（追加保留滚动位置）。</summary>
     public event EventHandler<RxRender>? RxRendered;
+
+    /// <summary>波形刷新事件：视图订阅后拉取快照更新曲线（FlushRx 触发）。</summary>
+    public event EventHandler? WaveRendered;
 
     public IReadOnlyList<int> BaudRates { get; } = new[]
         { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
@@ -430,6 +455,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
         _rxQueue.Enqueue(new RxItem(DateTime.Now, bytes, IsTx: true));
+        AppendWave(_txWave, bytes, DateTime.Now, ref _txPrev);
         TxCount += bytes.Length;
         if (!silent)
             StatusText = label is null ? $"已发送 {bytes.Length} 字节" : $"已发送 {label}（{bytes.Length} 字节）";
@@ -582,7 +608,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ---------- UI 设置持久化 ----------
 
-    private sealed record UiSettings(bool ShowFramesPanel);
+    // 可选参数默认值：旧配置缺字段时按 true 处理
+    private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = true, bool WaveFollow = true);
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -595,7 +622,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var s = JsonSerializer.Deserialize<UiSettings>(File.ReadAllText(UiSettingsPath));
                 if (s is not null)
+                {
                     ShowFramesPanel = s.ShowFramesPanel;
+                    ShowWavePanel = s.ShowWavePanel;
+                    WaveFollow = s.WaveFollow;
+                }
             }
         }
         catch
@@ -604,19 +635,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    partial void OnShowFramesPanelChanged(bool value)
+    private void SaveUiSettings()
     {
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
-            File.WriteAllText(UiSettingsPath,
-                JsonSerializer.Serialize(new UiSettings(value), new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(
+                new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow),
+                new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
         {
             // 保存失败不影响功能
         }
     }
+
+    partial void OnShowFramesPanelChanged(bool value) => SaveUiSettings();
+
+    partial void OnShowWavePanelChanged(bool value) => SaveUiSettings();
+
+    partial void OnWaveFollowChanged(bool value) => SaveUiSettings();
 
     [RelayCommand]
     private void ClearRx()
@@ -627,7 +665,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         FrameOkCount = 0;
         FrameErrCount = 0;
         _parser?.Reset();
+        lock (_waveLock)
+        {
+            _rxWave.Clear();
+            _txWave.Clear();
+            _rxPrev = 1;
+            _txPrev = 1;
+        }
+        _waveStart = DateTime.Now;
         RxRendered?.Invoke(this, new RxRender(RxRenderKind.Clear, string.Empty));
+        WaveRendered?.Invoke(this, EventArgs.Empty);
     }
 
     // ---------- 日志 ----------
@@ -698,10 +745,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ---------- 数据流 ----------
 
-    /// <summary>读取线程回调：仅入队/喂解析器，不做任何 UI 操作。</summary>
+    /// <summary>读取线程回调：仅入队/喂解析器/记录波形，不做任何 UI 操作。</summary>
     private void OnDataReceived(object? sender, TimedData e)
     {
         Interlocked.Add(ref _pendingRxBytes, e.Bytes.Length);
+        AppendWave(_rxWave, e.Bytes, e.Timestamp, ref _rxPrev); // 波形与解析/显示模式无关
         if (_parser != null)
         {
             // 帧解析模式：原始字节流进解析器，接收区只显示解出的帧
@@ -746,7 +794,65 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _logger.WriteLine(line);
             sb.Append(line).Append('\n');
         }
+
         RxRendered?.Invoke(this, new RxRender(RxRenderKind.Append, sb.ToString()));
+        WaveRendered?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ---------- 逻辑分析仪式波形（按字节 + 波特率逐位重建） ----------
+
+    /// <summary>当前位宽（秒）：串口按所选波特率，TCP 按标称值。</summary>
+    private double BitDuration => 1.0 / (IsSerial ? Math.Max(SelectedBaud, 1) : TcpNominalBaud);
+
+    /// <summary>把一段字节展开成 UART 位序列跳变（起始位0 + 8数据位LSB在前 + 停止位1）。</summary>
+    private void AppendWave(List<WavePt> buf, byte[] data, DateTime t0, ref double prev)
+    {
+        var bitDur = BitDuration;
+        var t = (t0 - _waveStart).TotalSeconds;
+        lock (_waveLock)
+        {
+            foreach (var b in data)
+            {
+                for (var bit = 0; bit < 10; bit++)
+                {
+                    int level = bit == 0 ? 0          // 起始位
+                               : bit == 9 ? 1          // 停止位
+                               : (b >> (bit - 1)) & 1; // 数据位 LSB 在前
+                    if (level != prev)
+                    {
+                        buf.Add(new WavePt(t, level));
+                        prev = level;
+                    }
+                    t += bitDur;
+                }
+            }
+            if (buf.Count > MaxWavePoints)
+                buf.RemoveRange(0, buf.Count - WaveTrimKeep);
+        }
+    }
+
+    /// <summary>RX 波形快照（UI 线程拉取）。</summary>
+    public (double[] Xs, double[] Ys, double Prev) RxWaveSnapshot()
+    {
+        lock (_waveLock)
+        {
+            var xs = new double[_rxWave.Count];
+            var ys = new double[_rxWave.Count];
+            for (var i = 0; i < _rxWave.Count; i++) { xs[i] = _rxWave[i].T; ys[i] = _rxWave[i].Y; }
+            return (xs, ys, _rxPrev);
+        }
+    }
+
+    /// <summary>TX 波形快照（UI 线程拉取）。</summary>
+    public (double[] Xs, double[] Ys, double Prev) TxWaveSnapshot()
+    {
+        lock (_waveLock)
+        {
+            var xs = new double[_txWave.Count];
+            var ys = new double[_txWave.Count];
+            for (var i = 0; i < _txWave.Count; i++) { xs[i] = _txWave[i].T; ys[i] = _txWave[i].Y; }
+            return (xs, ys, _txPrev);
+        }
     }
 
     /// <summary>单行格式化：[时间戳] 方向 数据（显示与日志共用）。</summary>
@@ -759,7 +865,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (ShowTimestamp)
             sb.Append('[').Append(item.Ts.ToString("HH:mm:ss.fff")).Append("] ");
         sb.Append(item.IsTx ? "→ " : "← ");
-        sb.Append(ShowHex ? Hex.Encode(item.Bytes) : Hex.ToAscii(item.Bytes));
+        sb.Append(ShowHex ? Hex.Encode(item.Bytes) : TextDecode.ToDisplay(item.Bytes));
         return sb.ToString();
     }
 

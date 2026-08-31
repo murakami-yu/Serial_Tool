@@ -24,17 +24,22 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         if (DataContext is MainViewModel vm)
+        {
             vm.RxRendered += OnRxRendered;
+            vm.WaveRendered += OnWaveRendered;
+        }
         Closed += (_, _) =>
         {
             if (DataContext is MainViewModel vm)
             {
                 vm.RxRendered -= OnRxRendered;
+                vm.WaveRendered -= OnWaveRendered;
                 vm.Dispose();
             }
         };
         // 按持久化设置应用面板初始状态（绑定触发的事件可能早于元素就绪）
         Dispatcher.BeginInvoke(ApplyFramesPanelState, System.Windows.Threading.DispatcherPriority.Loaded);
+        InitWavePlot();
 
         // 拖动分隔条过程中持续钳制右栏宽度：本机 DPI 环境异常时（150% 缩放 + 虚拟显示驱动），
         // 拖动增量会被放大数百倍，GridSplitter 会写出远超窗口的列宽，必须当场掐掉
@@ -106,6 +111,90 @@ public partial class MainWindow : Window
         FramesSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    // ---------- 时序图（逻辑分析仪式逐位方波） ----------
+
+    private ScottPlot.Plottables.Scatter? _waveRx;
+    private ScottPlot.Plottables.Scatter? _waveTx;
+    private const double RxHigh = 1.6, RxLow = 1.0;   // RX 通道电平带
+    private const double TxHigh = 0.2, TxLow = -0.4;  // TX 通道电平带
+    private const double FollowWindowSec = 0.1;       // 跟随窗口 100ms（位级观察）
+
+    /// <summary>初始化时序图：轴与固定纵向范围。
+    /// 注意：ScottPlot 5.1.59 的 SkiaSharp 文本链路在此环境无法渲染中文（各级字体设置均试过仍豆腐块，
+    /// SkiaSharp 本身解析正常），轴标签用英文；中文图例说明由面板顶部的 WPF 提示行承担。</summary>
+    private void InitWavePlot()
+    {
+        WavePlot.Plot.Axes.Bottom.Label.Text = "Time (s)";
+        WavePlot.Plot.Axes.Left.Label.Text = "RX / TX";
+        WavePlot.Plot.Axes.SetLimitsY(-1.0, 2.4);
+        WavePlot.Plot.Axes.Left.SetTicks(new[] { (RxHigh + RxLow) / 2, (TxHigh + TxLow) / 2 },
+            new[] { "RX", "TX" });
+    }
+
+    /// <summary>把跳变序列展开成方波拐点序列（每个跳变 = 保持点 + 边沿点），普通折线即方波。</summary>
+    private static void ExpandSquare(double[] xs, double[] ys, double prevHigh, double high, double low,
+        out double[] outXs, out double[] outYs)
+    {
+        if (xs.Length == 0)
+        {
+            outXs = Array.Empty<double>();
+            outYs = Array.Empty<double>();
+            return;
+        }
+        var ox = new List<double>(xs.Length * 2 + 1);
+        var oy = new List<double>(ox.Capacity);
+        var prevLevel = prevHigh > 0.5 ? high : low;
+        ox.Add(xs[0]); oy.Add(prevLevel); // 起始电平
+        for (var i = 0; i < xs.Length; i++)
+        {
+            var lvl = ys[i] > 0.5 ? high : low;
+            if (lvl == prevLevel) continue;
+            ox.Add(xs[i]); oy.Add(prevLevel); // 保持到跳变时刻
+            ox.Add(xs[i]); oy.Add(lvl);       // 垂直边沿
+            prevLevel = lvl;
+        }
+        outXs = ox.ToArray();
+        outYs = oy.ToArray();
+    }
+
+    /// <summary>重建一条方波曲线（逻辑分析仪电平带）。</summary>
+    private ScottPlot.Plottables.Scatter AddWaveStep(double[] xs, double[] ys, double prev, double high, double low, string hex)
+    {
+        ExpandSquare(xs, ys, prev, high, low, out var ox, out var oy);
+        var s = WavePlot.Plot.Add.Scatter(ox, oy);
+        s.LineWidth = 1.2f;
+        s.MarkerSize = 0;
+        s.Color = ScottPlot.Color.FromHtml(hex);
+        return s;
+    }
+
+    /// <summary>波形刷新：重建 RX/TX 方波；跟随模式锁定最近 100ms（位级观察窗口）。</summary>
+    private void OnWaveRendered(object? sender, EventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        if (!vm.ShowWavePanel) return; // 面板隐藏时跳过渲染（缓冲继续累计）
+
+        var rx = vm.RxWaveSnapshot();
+        var tx = vm.TxWaveSnapshot();
+
+        if (_waveRx is not null) WavePlot.Plot.Remove(_waveRx);
+        if (_waveTx is not null) WavePlot.Plot.Remove(_waveTx);
+        _waveRx = AddWaveStep(rx.Xs, rx.Ys, rx.Prev, RxHigh, RxLow, "#2B7DE0");
+        _waveTx = AddWaveStep(tx.Xs, tx.Ys, tx.Prev, TxHigh, TxLow, "#E08A2B");
+
+        if (vm.WaveFollow)
+        {
+            var last = 0.0;
+            if (rx.Xs.Length > 0) last = Math.Max(last, rx.Xs[^1]);
+            if (tx.Xs.Length > 0) last = Math.Max(last, tx.Xs[^1]);
+            if (last > 0)
+            {
+                WavePlot.Plot.Axes.SetLimitsX(last - FollowWindowSec, last + FollowWindowSec * 0.02);
+            }
+        }
+        WavePlot.Refresh();
+    }
+
     // ---------- 接收框渲染（事件驱动：追加保留滚动位置） ----------
 
     /// <summary>跟随策略：勾选"跟随最新"且鼠标不在框上（悬停 = 暂停查看）。</summary>
@@ -150,6 +239,11 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel { AutoScroll: true })
             RxOutput.ScrollToEnd();
+    }
+
+    private void CheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+
     }
 
     /// <summary>重新勾选"跟随最新"：立即跳到最新（若正在悬停则等移出后再跟）。

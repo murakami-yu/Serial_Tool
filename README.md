@@ -13,7 +13,7 @@ Windows 专用通用串口调试工具：UART / RS232 / RS485 收发起步，模
 | 语言/运行时 | C# / **.NET 10**（LTS），WPF |
 | MVVM | CommunityToolkit.MVVM |
 | 停靠布局 | Dirkster.AvalonDock（VS 式多面板） |
-| 波形 | ScottPlot 5（SignalPlot 百万点实时） |
+| 波形 | ScottPlot.WPF 5（逻辑分析仪式逐位方波：按波特率重建 UART 位流，RX/TX 双通道） |
 | 串口 | RJCP.SerialPortStream（NuGet 3.0.5） |
 | I2C（V2） | FTDI.FTD2XX_NET（厂商官方包） |
 | CAN（V3） | Peak.PCANBasic.NET（官方）或 CANable slcan |
@@ -61,7 +61,7 @@ SerialTool/
 | --- | --- | --- |
 | V1.0 | WPF 骨架 + 串口收发控制台（SerialPortStream，含设备名识别）+ TCP 连接 + 会话日志 + 多帧定时发送（含帧备注） | ✅ 完成 |
 | V1.1 | 帧解析引擎 + CRC 校验库 + JSON 协议模板（含编辑器）+ 帧结构化显示 | ✅ 完成（v2：字段链 + 长度域任意位置 + 校验字节序 + 帧尾扫描 + 多模板并行仲裁） |
-| V1.2 | ScottPlot 时序图 | 规划 |
+| V1.2 | ScottPlot 时序图（逻辑分析仪式逐位方波）+ GBK/UTF-8 文本解码 | ✅ 完成 |
 | V1.3 | 发送历史 / 热插拔 / 多端口标签 / 流控 | 规划 |
 | V2 | I2C 后端（FT232H 官方包）+ 事务解析 | 规划 |
 | V3 | CAN 后端（PCAN/slcan）+ DBC 解析 + 信号曲线 | 规划 |
