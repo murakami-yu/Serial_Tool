@@ -41,7 +41,7 @@ SerialTool/
 │   ├── SerialTool.App/          # WPF 主程序（MVVM 收发控制台 + 会话日志 + 多帧定时发送）
 │   ├── SerialTool.Core/         # 解析引擎（Hex + Checksum + Framing 帧解析）
 │   └── SerialTool.Backends/     # 硬件后端（IBusBackend + SerialBackend + TcpBackend）
-├── tests/SerialTool.Core.Tests/ # xUnit（41 用例）
+├── tests/SerialTool.Core.Tests/ # xUnit（92 用例）
 ├── scripts/publish.ps1          # 自包含单文件发布
 ├── Docs/                        # 设计文档 + 技术调查
 └── legacy/                      # v0.2 Go B/S 方案归档
@@ -62,6 +62,7 @@ SerialTool/
 | V1.0 | WPF 骨架 + 串口收发控制台（SerialPortStream，含设备名识别）+ TCP 连接 + 会话日志 + 多帧定时发送（含帧备注） | ✅ 完成 |
 | V1.1 | 帧解析引擎 + CRC 校验库 + JSON 协议模板（含编辑器）+ 帧结构化显示 | ✅ 完成（v2：字段链 + 长度域任意位置 + 校验字节序 + 帧尾扫描 + 多模板并行仲裁） |
 | V1.2 | ScottPlot 时序图（逻辑分析仪式逐位方波）+ GBK/UTF-8 文本解码 | ✅ 完成 |
+| V1.2.x | 功能增强：状态栏速率/时长统计 + 接收过滤 ｜ RTS/DTR 控制 + CTS/DSR 指示灯 ｜ 帧字段实时曲线 ｜ 自动应答器（[执行计划](Docs/功能增强执行计划.md)）｜ 布局独立性（工具条换行 / 各框 ClipToBounds / 等宽输入 28px 基线 / MinWidth 1220） | ✅ 完成（2026-09-01，92 单测通过 + 启动冒烟；硬件行为项待接设备人工验证） |
 | V1.3 | 发送历史 / 热插拔 / 多端口标签 / 流控 | 规划 |
 | V2 | I2C 后端（FT232H 官方包）+ 事务解析 | 规划 |
 | V3 | CAN 后端（PCAN/slcan）+ DBC 解析 + 信号曲线 | 规划 |

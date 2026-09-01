@@ -260,6 +260,62 @@
             <Setter Property="SelectionMode" Value="Single"/>
         </Style>
 
+        <!-- 标签容器：去掉默认模板的直角外框（卡片外观由 GroupBox 提供） -->
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- 标签头：顶部圆角小卡片（选中白底灰边、底边开口连向内容），与全局圆角体系一致 -->
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" CornerRadius="4,4,0,0" Margin="2,0,2,0"
+                                Background="Transparent" BorderBrush="Transparent"
+                                BorderThickness="1,1,1,0" SnapsToDevicePixels="True">
+                            <ContentPresenter ContentSource="Header" Margin="10,5,10,6"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PanelBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 工具提示：圆角小气泡（系统默认模板为直角黑框） -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="HasDropShadow" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border CornerRadius="4" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                Padding="8,5" SnapsToDevicePixels="True">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 表头：每列底部一段圆头短线。
              注意分隔线必须锚定底部（VerticalAlignment=Bottom + MinHeight）：
              StackPanel 顺序布局会让无文字的表头（DataGrid 内置填充头 PART_FillerColumnHeader，
@@ -386,9 +442,11 @@
             </Setter>
         </Style>
 
+        <!-- 等宽输入：仅换字体族（字号与全局一致）；Cascadia 行高偏大，收紧行距使框高落回 28px 基线，
+             与普通输入框/下拉框/按钮同高（表格行内混排时高度一致） -->
         <Style x:Key="Mono" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Courier New"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="6,2"/>
         </Style>
     </Application.Resources>
 </Application>

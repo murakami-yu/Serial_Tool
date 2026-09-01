@@ -23,7 +23,8 @@ namespace SerialTool.App.ViewModels;
 /// <param name="Bytes">原始字节。</param>
 /// <param name="IsTx">true = 本机发送（显示 →）。</param>
 /// <param name="Frame">解析出的帧（原始数据行为 null）。</param>
-public sealed record RxItem(DateTime Ts, byte[] Bytes, bool IsTx, ParsedFrame? Frame = null);
+/// <param name="Tag">方向前缀覆盖（如自动应答回显 "⇄ "）；空用默认方向箭头。</param>
+public sealed record RxItem(DateTime Ts, byte[] Bytes, bool IsTx, ParsedFrame? Frame = null, string? Tag = null);
 
 /// <summary>接收框渲染指令（事件驱动，视图直接操作文本以保留滚动位置）。</summary>
 public enum RxRenderKind
@@ -62,6 +63,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private double _txPrev = 1;
     private DateTime _waveStart = DateTime.Now;
 
+    // 字段曲线：读线程写点 / UI 线程拉快照（与波形同模式）
+    private const int MaxPlotPoints = 20_000;  // 单条曲线上限（超出丢最旧一半）
+    private const int PlotTrimKeep = 10_000;
+    private readonly object _plotLock = new();
+
     private readonly SerialBackend _serialBackend = new();
     private readonly TcpBackend _tcpBackend = new();
 
@@ -73,6 +79,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly List<RxItem> _lines = new();
     private readonly DispatcherTimer _flushTimer;
     private long _pendingRxBytes;
+
+    // 状态栏统计：近 5 秒 RX 速率滑动窗口 + 连接起始时刻（UI 线程访问）
+    private const int RateWindowSec = 5;
+    private readonly Queue<(DateTime T, long Bytes)> _rateWindow = new();
+    private DateTime? _connectedSince;
 
     [ObservableProperty]
     private ObservableCollection<DeviceInfo> _portItems = new();
@@ -170,6 +181,47 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _logFilePath = DefaultLogPath();
 
+    /// <summary>接收区过滤词：HEX 子串（忽略分隔/大小写）或显示文本子串。</summary>
+    [ObservableProperty]
+    private string _rxFilterText = string.Empty;
+
+    /// <summary>过滤开关：只影响接收区视图，数据缓冲与日志文件始终全量。</summary>
+    [ObservableProperty]
+    private bool _filterEnabled;
+
+    /// <summary>近 5 秒 RX 实测速率（状态栏文本，如 "4.2 kB/s"）。</summary>
+    [ObservableProperty]
+    private string _rxRateText = "0 B/s";
+
+    /// <summary>本次连接时长 hh:mm:ss（未连接为空）。</summary>
+    [ObservableProperty]
+    private string _elapsedText = string.Empty;
+
+    // ---------- 控制引脚（RTS/DTR 输出，CTS/DSR 输入指示；仅串口模式） ----------
+
+    /// <summary>RTS 输出电平（写通到端口；打开端口时同步端口实际初值）。</summary>
+    [ObservableProperty]
+    private bool _rtsOn;
+
+    /// <summary>DTR 输出电平（写通到端口）。</summary>
+    [ObservableProperty]
+    private bool _dtrOn;
+
+    /// <summary>CTS 输入电平（50ms 轮询刷新）。</summary>
+    [ObservableProperty]
+    private bool _ctsOn;
+
+    /// <summary>DSR 输入电平（50ms 轮询刷新）。</summary>
+    [ObservableProperty]
+    private bool _dsrOn;
+
+    /// <summary>引脚控制是否可用：串口模式且已连接（TCP 无物理引脚）。</summary>
+    public bool CanControlPins => IsPortOpen && IsSerial;
+
+    partial void OnRtsOnChanged(bool value) => _serialBackend.RtsEnabled = value;
+
+    partial void OnDtrOnChanged(bool value) => _serialBackend.DtrEnabled = value;
+
     public bool IsPortClosed => !IsPortOpen;
 
     /// <summary>接收框渲染事件：视图订阅后直接操作 TextBox（追加保留滚动位置）。</summary>
@@ -177,6 +229,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>波形刷新事件：视图订阅后拉取快照更新曲线（FlushRx 触发）。</summary>
     public event EventHandler? WaveRendered;
+
+    /// <summary>字段曲线刷新事件：视图订阅后拉取快照（FlushRx / 清空 / 配置变更触发）。</summary>
+    public event EventHandler? FieldPlotsRendered;
 
     public IReadOnlyList<int> BaudRates { get; } = new[]
         { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
@@ -190,6 +245,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private SendFrameViewModel? _selectedFrame;
+
+    // ---------- 字段曲线 ----------
+
+    /// <summary>曲线配置列表（持久化到 Config/field_plots.json）。读线程枚举点集需持 _plotLock。</summary>
+    public ObservableCollection<FieldPlotViewModel> FieldPlots { get; } = new();
+
+    [ObservableProperty]
+    private FieldPlotViewModel? _selectedPlot;
+
+    // ---------- 自动应答 ----------
+
+    /// <summary>应答规则列表（持久化到 Config/auto_reply.json）。仅 UI 线程访问。</summary>
+    public ObservableCollection<AutoReplyViewModel> AutoReplies { get; } = new();
+
+    [ObservableProperty]
+    private AutoReplyViewModel? _selectedReply;
+
+    /// <summary>待发应答队列（匹配时入队，FlushRx 按到期时刻发出；仅 UI 线程访问）。</summary>
+    private readonly List<(DateTime Due, byte[] Bytes, string Label)> _pendingReplies = new();
 
     public MainViewModel()
     {
@@ -214,6 +288,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _cyclicTimer.Start();
 
         SendFrames.CollectionChanged += OnSendFramesChanged;
+        FieldPlots.CollectionChanged += OnFieldPlotsChanged;
 
         // 预创建日志目录：保证"打开目录"按钮始终有目录可开
         try { Directory.CreateDirectory(System.IO.Path.GetDirectoryName(LogFilePath)!); }
@@ -223,6 +298,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         LoadTemplates();
         _ = LoadPortsAsync();
         LoadFrames();
+        LoadPlots();
+        LoadReplies();
     }
 
     // ---------- 帧解析联动 ----------
@@ -258,9 +335,50 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>解析线程回调：帧入队（帧模式下原始字节流不再逐块显示）。</summary>
+    /// <summary>解析线程回调：帧入队（帧模式下原始字节流不再逐块显示）。
+    /// 成功帧同时喂字段曲线采样（读线程上下文：只做加锁写点，不做任何 UI）。</summary>
     private void OnFrameEmitted(ParsedFrame frame)
-        => _rxQueue.Enqueue(new RxItem(frame.Ts, frame.Raw, IsTx: false, frame));
+    {
+        _rxQueue.Enqueue(new RxItem(frame.Ts, frame.Raw, IsTx: false, frame));
+        if (!frame.Ok) return;
+
+        lock (_plotLock)
+        {
+            if (FieldPlots.Count == 0) return;
+            var t = (frame.Ts - _waveStart).TotalSeconds;
+            foreach (var p in FieldPlots)
+            {
+                if (!p.Enabled) continue;
+                var v = FieldPlotEvaluator.Evaluate(p.Snapshot, frame);
+                if (v is not { } y) continue;
+                p.Pts.Add(new PlotPt(t, y));
+                if (p.Pts.Count > MaxPlotPoints)
+                    p.Pts.RemoveRange(0, p.Pts.Count - PlotTrimKeep);
+            }
+        }
+    }
+
+    /// <summary>曲线快照（UI 线程拉取；锁内拷贝数组）。</summary>
+    public (string Name, string Unit, double[] Xs, double[] Ys)[] FieldPlotSnapshot()
+    {
+        lock (_plotLock)
+        {
+            var list = new (string, string, double[], double[])[FieldPlots.Count];
+            for (var i = 0; i < FieldPlots.Count; i++)
+            {
+                var p = FieldPlots[i];
+                var xs = new double[p.Pts.Count];
+                var ys = new double[p.Pts.Count];
+                for (var j = 0; j < p.Pts.Count; j++)
+                {
+                    xs[j] = p.Pts[j].T;
+                    ys[j] = p.Pts[j].Y;
+                }
+                list[i] = (p.Name, p.Unit, xs, ys);
+            }
+            return list;
+        }
+    }
 
     /// <summary>打开模板编辑窗口。</summary>
     [RelayCommand]
@@ -339,6 +457,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsSerial));
         OnPropertyChanged(nameof(IsTcp));
+        OnPropertyChanged(nameof(CanControlPins));
         TogglePortCommand.NotifyCanExecuteChanged();
         // 切换连接方式时若已连接则先断开
         if (IsPortOpen)
@@ -346,6 +465,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _active?.Close();
             _active = null;
             IsPortOpen = false;
+            OnLinkClosed();
             StatusText = "已断开（切换连接方式）";
         }
     }
@@ -380,6 +500,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _active?.Close();
             _active = null;
             IsPortOpen = false;
+            OnLinkClosed();
             StatusText = "已断开";
             return;
         }
@@ -402,11 +523,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 StatusText = $"TCP {TcpHost.Trim()}:{TcpPort} 已连接";
             }
             IsPortOpen = true;
+            _connectedSince = DateTime.Now;
+            if (IsSerial)
+            {
+                // 开关状态与端口实际电平同步（RJCP 打开后的默认电平读回），防 UI 残留
+                RtsOn = _serialBackend.RtsEnabled;
+                DtrOn = _serialBackend.DtrEnabled;
+            }
         }
         catch (Exception ex)
         {
             StatusText = $"连接失败: {ex.Message}";
         }
+    }
+
+    /// <summary>连接断开后的统计复位（时长清零、速率窗口清空、引脚状态复位）。</summary>
+    private void OnLinkClosed()
+    {
+        _connectedSince = null;
+        _rateWindow.Clear();
+        RxRateText = "0 B/s";
+        ElapsedText = string.Empty;
+        RtsOn = false;
+        DtrOn = false;
+        CtsOn = false;
+        DsrOn = false;
     }
 
     private bool CanTogglePort()
@@ -436,8 +577,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private bool CanSend() => IsPortOpen && !string.IsNullOrWhiteSpace(TxInput);
 
-    /// <summary>写入当前活动连接并回显；silent=true 时不刷状态栏（循环发送防噪音）。</summary>
-    private void WriteBytes(byte[] bytes, string? label = null, bool silent = false)
+    /// <summary>写入当前活动连接并回显；silent=true 时不刷状态栏（循环发送/自动应答防噪音）。</summary>
+    private void WriteBytes(byte[] bytes, string? label = null, bool silent = false, string? tag = null)
     {
         if (bytes.Length == 0) return;
         if (_active is null)
@@ -454,7 +595,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             StatusText = $"发送失败: {ex.Message}";
             return;
         }
-        _rxQueue.Enqueue(new RxItem(DateTime.Now, bytes, IsTx: true));
+        _rxQueue.Enqueue(new RxItem(DateTime.Now, bytes, IsTx: true, Tag: tag));
         AppendWave(_txWave, bytes, DateTime.Now, ref _txPrev);
         TxCount += bytes.Length;
         if (!silent)
@@ -606,6 +747,235 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    // ---------- 字段曲线配置持久化 ----------
+
+    private sealed record PlotDto(
+        bool Enabled, string Name, string Template, string CommandHex,
+        int Offset, int Width, bool BigEndian, bool Signed, double Scale, string Unit);
+
+    private static string PlotsConfigPath
+        => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "field_plots.json");
+
+    private void LoadPlots()
+    {
+        try
+        {
+            if (File.Exists(PlotsConfigPath))
+            {
+                var dto = JsonSerializer.Deserialize<List<PlotDto>>(File.ReadAllText(PlotsConfigPath));
+                if (dto is not null)
+                    foreach (var d in dto)
+                        AddPlotCore(MapPlot(d));
+            }
+        }
+        catch
+        {
+            // 配置损坏时回退到默认样例
+        }
+        if (FieldPlots.Count == 0)
+        {
+            AddPlotCore(MapPlot(new PlotDto(true, "value", "", "", 0, 2, false, false, 0.01, "")));
+            SavePlots();
+        }
+    }
+
+    private static FieldPlotViewModel MapPlot(PlotDto d) => new()
+    {
+        Enabled = d.Enabled,
+        Name = d.Name,
+        Template = d.Template ?? string.Empty,
+        CommandHex = d.CommandHex ?? string.Empty,
+        Offset = d.Offset,
+        Width = d.Width,
+        BigEndian = d.BigEndian,
+        Signed = d.Signed,
+        Scale = d.Scale,
+        Unit = d.Unit ?? string.Empty,
+    };
+
+    private void SavePlots()
+    {
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PlotsConfigPath)!);
+            var dto = FieldPlots.Select(p => new PlotDto(
+                p.Enabled, p.Name, p.Template, p.CommandHex,
+                p.Offset, p.Width, p.BigEndian, p.Signed, p.Scale, p.Unit)).ToList();
+            File.WriteAllText(PlotsConfigPath, JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"曲线配置保存失败: {ex.Message}";
+        }
+    }
+
+    /// <summary>入集合并挂配置变化回调（集合变更与读线程枚举同锁）。</summary>
+    private void AddPlotCore(FieldPlotViewModel plot)
+    {
+        plot.ConfigChanged += OnPlotConfigChanged;
+        lock (_plotLock)
+        {
+            FieldPlots.Add(plot);
+        }
+    }
+
+    [RelayCommand]
+    private void AddPlot()
+    {
+        var n = FieldPlots.Count + 1;
+        AddPlotCore(new FieldPlotViewModel { Name = $"curve{n}" });
+        SelectedPlot = FieldPlots[^1];
+        SavePlots();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemovePlot))]
+    private void RemoveSelectedPlot()
+    {
+        if (SelectedPlot is null) return;
+        SelectedPlot.ConfigChanged -= OnPlotConfigChanged;
+        lock (_plotLock)
+        {
+            FieldPlots.Remove(SelectedPlot);
+        }
+        SavePlots();
+        FieldPlotsRendered?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool CanRemovePlot() => SelectedPlot is not null;
+
+    [RelayCommand]
+    private void ClearPlots()
+    {
+        foreach (var p in FieldPlots)
+            p.ConfigChanged -= OnPlotConfigChanged;
+        lock (_plotLock)
+        {
+            FieldPlots.Clear();
+        }
+        SavePlots();
+        FieldPlotsRendered?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnFieldPlotsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        => OnPropertyChanged(nameof(CanRemovePlot));
+
+    /// <summary>单条曲线配置变更：清该曲线历史点（新旧语义不混画）+ 自动保存 + 重绘。</summary>
+    private void OnPlotConfigChanged(FieldPlotViewModel p)
+    {
+        lock (_plotLock)
+        {
+            p.Pts.Clear();
+        }
+        SavePlots();
+        FieldPlotsRendered?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ---------- 自动应答持久化 ----------
+
+    private sealed record ReplyDto(
+        bool Enabled, string Name, string Template, string CommandHex,
+        string MatchHex, string ReplyHex, int DelayMs, bool Once);
+
+    private static string RepliesConfigPath
+        => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "auto_reply.json");
+
+    private void LoadReplies()
+    {
+        try
+        {
+            if (File.Exists(RepliesConfigPath))
+            {
+                var dto = JsonSerializer.Deserialize<List<ReplyDto>>(File.ReadAllText(RepliesConfigPath));
+                if (dto is not null)
+                    foreach (var d in dto)
+                        AddReplyCore(new AutoReplyViewModel
+                        {
+                            Enabled = d.Enabled,
+                            Name = d.Name,
+                            Template = d.Template ?? string.Empty,
+                            CommandHex = d.CommandHex ?? string.Empty,
+                            MatchHex = d.MatchHex ?? string.Empty,
+                            ReplyHex = d.ReplyHex ?? string.Empty,
+                            DelayMs = d.DelayMs,
+                            Once = d.Once,
+                        });
+            }
+        }
+        catch
+        {
+            // 配置损坏时回退到空规则
+        }
+        if (AutoReplies.Count == 0)
+        {
+            for (var i = 0; i < 2; i++)
+                AddReplyCore(new AutoReplyViewModel { Name = $"reply{i + 1}" });
+            // 与多帧面板一致：首次生成种子规则即落盘，保证配置文件存在
+            SaveReplies();
+        }
+    }
+
+    private void SaveReplies()
+    {
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(RepliesConfigPath)!);
+            var dto = AutoReplies.Select(r => new ReplyDto(
+                r.Enabled, r.Name, r.Template, r.CommandHex,
+                r.MatchHex, r.ReplyHex, r.DelayMs, r.Once)).ToList();
+            File.WriteAllText(RepliesConfigPath,
+                JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"应答配置保存失败: {ex.Message}";
+        }
+    }
+
+    private void AddReplyCore(AutoReplyViewModel rule) => rule.ConfigChanged += OnReplyConfigChanged;
+
+    [RelayCommand]
+    private void AddReply()
+    {
+        var r = new AutoReplyViewModel { Name = $"reply{AutoReplies.Count + 1}" };
+        AddReplyCore(r);
+        AutoReplies.Add(r);
+        SelectedReply = r;
+        SaveReplies();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveReply))]
+    private void RemoveSelectedReply()
+    {
+        if (SelectedReply is null) return;
+        SelectedReply.ConfigChanged -= OnReplyConfigChanged;
+        AutoReplies.Remove(SelectedReply);
+        SaveReplies();
+    }
+
+    private bool CanRemoveReply() => SelectedReply is not null;
+
+    [RelayCommand]
+    private void ClearReplies()
+    {
+        foreach (var r in AutoReplies)
+            r.ConfigChanged -= OnReplyConfigChanged;
+        AutoReplies.Clear();
+        SaveReplies();
+    }
+
+    /// <summary>规则配置变更：自动保存 + HEX 合法性提示（非法/空回复的规则会静默不生效，需告知用户）。</summary>
+    private void OnReplyConfigChanged(AutoReplyViewModel r)
+    {
+        SaveReplies();
+        if (!r.Enabled) return;
+        var bad = !Hex.TryParse(r.CommandHex, out _)
+                  || !Hex.TryParse(r.MatchHex, out _)
+                  || !Hex.TryParse(r.ReplyHex, out var rep)
+                  || rep.Length == 0;
+        if (bad)
+            StatusText = $"应答规则[{r.Name}] HEX 非法或回复为空，该规则不生效";
+    }
+
     // ---------- UI 设置持久化 ----------
 
     // 可选参数默认值：旧配置缺字段时按 true 处理
@@ -665,6 +1035,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         FrameOkCount = 0;
         FrameErrCount = 0;
         _parser?.Reset();
+        _rateWindow.Clear();
+        RxRateText = "0 B/s";
+        lock (_plotLock)
+        {
+            foreach (var p in FieldPlots)
+                p.Pts.Clear();
+        }
         lock (_waveLock)
         {
             _rxWave.Clear();
@@ -675,6 +1052,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _waveStart = DateTime.Now;
         RxRendered?.Invoke(this, new RxRender(RxRenderKind.Clear, string.Empty));
         WaveRendered?.Invoke(this, EventArgs.Empty);
+        FieldPlotsRendered?.Invoke(this, EventArgs.Empty);
     }
 
     // ---------- 日志 ----------
@@ -760,9 +1138,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>UI 定时批量投递：高波特率下避免逐字节刷新；同时把新行落盘。
-    /// 渲染走追加事件（不整体重置文本，保留用户滚动位置）。</summary>
+    /// 渲染走追加事件（不整体重置文本，保留用户滚动位置）。
+    /// 统计在早退之前执行（空闲时速率归零、时长持续走）。</summary>
     private void FlushRx(object? sender, EventArgs e)
     {
+        UpdateStats();
+        ProcessDueReplies();
         if (_rxQueue.IsEmpty) return;
 
         var newItems = new List<RxItem>();
@@ -774,8 +1155,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         while (_lines.Count > MaxLines)
             _lines.RemoveAt(0);
 
-        RxCount += Interlocked.Exchange(ref _pendingRxBytes, 0);
-
         // 帧统计
         long ok = 0, err = 0;
         foreach (var item in newItems)
@@ -786,17 +1165,106 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (ok > 0) FrameOkCount += ok;
         if (err > 0) FrameErrCount += err;
 
+        // 自动应答匹配：仅成功帧，首条命中规则出队一条应答（延迟由 ProcessDueReplies 调度）
+        if (AutoReplies.Count > 0)
+        {
+            foreach (var item in newItems)
+            {
+                if (item.Frame is not { Ok: true } f) continue;
+                MatchAutoReply(f);
+            }
+        }
+
         var sb = new System.Text.StringBuilder(newItems.Count * 32);
         foreach (var item in newItems)
         {
             var line = FormatLine(item);
             if (_logger.IsActive)
                 _logger.WriteLine(line);
-            sb.Append(line).Append('\n');
+            if (PassFilter(item))
+                sb.Append(line).Append('\n');
         }
 
         RxRendered?.Invoke(this, new RxRender(RxRenderKind.Append, sb.ToString()));
         WaveRendered?.Invoke(this, EventArgs.Empty);
+        FieldPlotsRendered?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ---------- 状态栏统计 ----------
+
+    /// <summary>每拍刷新：清空待计字节并入滑窗，算近 5 秒速率与连接时长。</summary>
+    private void UpdateStats()
+    {
+        var pending = Interlocked.Exchange(ref _pendingRxBytes, 0);
+        if (pending > 0)
+        {
+            RxCount += pending;
+            _rateWindow.Enqueue((DateTime.Now, pending));
+        }
+
+        var now = DateTime.Now;
+        while (_rateWindow.Count > 0 && _rateWindow.Peek().T < now.AddSeconds(-RateWindowSec))
+            _rateWindow.Dequeue();
+
+        var rate = 0.0;
+        if (_rateWindow.Count > 0)
+        {
+            var bytes = 0L;
+            foreach (var w in _rateWindow) bytes += w.Bytes;
+            var span = Math.Max(1.0, (now - _rateWindow.Peek().T).TotalSeconds);
+            rate = bytes / span;
+        }
+        RxRateText = rate < 1024
+            ? $"{rate:F0} B/s"
+            : $"{rate / 1024:F1} kB/s";
+
+        ElapsedText = _connectedSince is { } t
+            ? (now - t).ToString(@"hh\:mm\:ss")
+            : string.Empty;
+
+        // 输入引脚轮询（50ms 一拍，UI 线程；TCP 模式跳过）
+        if (IsPortOpen && IsSerial)
+        {
+            var sig = _serialBackend.Signals;
+            CtsOn = sig.Cts;
+            DsrOn = sig.Dsr;
+        }
+    }
+
+    /// <summary>视图过滤判定：关 = 全过；开 = HEX 子串或显示文本子串命中。</summary>
+    private bool PassFilter(RxItem it)
+        => !FilterEnabled || RxFilter.IsMatch(RxFilterText, it.Bytes);
+
+    // ---------- 自动应答调度（UI 线程：FlushRx 每 50ms 一拍） ----------
+
+    /// <summary>对一帧跑规则匹配：首条命中 → 计数、Once 禁用、按延迟入待发队列。</summary>
+    private void MatchAutoReply(ParsedFrame f)
+    {
+        foreach (var r in AutoReplies)
+        {
+            if (!r.Enabled || !AutoReplyMatcher.IsMatch(r.Snapshot, f)) continue;
+            if (!Hex.TryParse(r.ReplyHex, out var bytes) || bytes.Length == 0) return; // 快照已验，双保险
+            r.HitCount++;
+            if (r.Once)
+                r.Enabled = false; // 触发 ConfigChanged → 持久化禁用状态
+            _pendingReplies.Add((DateTime.Now.AddMilliseconds(Math.Max(0, r.DelayMs)),
+                bytes, $"应答[{r.Name}]"));
+            return; // 首条命中即止
+        }
+    }
+
+    /// <summary>发出到期的应答（倒序删除避免索引错位）。</summary>
+    private void ProcessDueReplies()
+    {
+        if (_pendingReplies.Count == 0) return;
+        var now = DateTime.Now;
+        for (var i = _pendingReplies.Count - 1; i >= 0; i--)
+        {
+            if (_pendingReplies[i].Due > now) continue;
+            var r = _pendingReplies[i];
+            _pendingReplies.RemoveAt(i);
+            WriteBytes(r.Bytes, r.Label, silent: true, tag: "⇄ ");
+        }
     }
 
     // ---------- 逻辑分析仪式波形（按字节 + 波特率逐位重建） ----------
@@ -864,7 +1332,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var sb = new System.Text.StringBuilder(48 + item.Bytes.Length * 3);
         if (ShowTimestamp)
             sb.Append('[').Append(item.Ts.ToString("HH:mm:ss.fff")).Append("] ");
-        sb.Append(item.IsTx ? "→ " : "← ");
+        sb.Append(item.Tag ?? (item.IsTx ? "→ " : "← ")); // 自动应答回显用 ⇄ 区分手动发送
         sb.Append(ShowHex ? Hex.Encode(item.Bytes) : TextDecode.ToDisplay(item.Bytes));
         return sb.ToString();
     }
@@ -892,12 +1360,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return sb.ToString();
     }
 
-    /// <summary>全量文本（显示模式切换时全量重绘用）。</summary>
+    /// <summary>全量文本（显示模式切换/过滤变化时全量重绘用；应用当前过滤）。</summary>
     private string BuildFullText()
     {
         var sb = new System.Text.StringBuilder(_lines.Count * 32);
         foreach (var item in _lines)
-            sb.Append(FormatLine(item)).Append('\n');
+            if (PassFilter(item))
+                sb.Append(FormatLine(item)).Append('\n');
         return sb.ToString();
     }
 
@@ -906,6 +1375,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _active = null;
             IsPortOpen = false;
+            OnLinkClosed();
             StatusText = msg;
         });
 
@@ -922,6 +1392,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             case nameof(IsPortOpen):
                 TogglePortCommand.NotifyCanExecuteChanged();
                 SendCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(CanControlPins));
                 break;
             case nameof(SelectedDevice) or nameof(TcpHost) or nameof(TcpPort):
                 TogglePortCommand.NotifyCanExecuteChanged();
@@ -932,8 +1403,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             case nameof(SelectedFrame):
                 RemoveSelectedFrameCommand.NotifyCanExecuteChanged();
                 break;
-            case nameof(ShowHex) or nameof(ShowTimestamp):
-                // 显示模式切换：全量重绘，视图恢复原滚动位置
+            case nameof(SelectedPlot):
+                RemoveSelectedPlotCommand.NotifyCanExecuteChanged();
+                break;
+            case nameof(SelectedReply):
+                RemoveSelectedReplyCommand.NotifyCanExecuteChanged();
+                break;
+            case nameof(ShowHex) or nameof(ShowTimestamp) or nameof(RxFilterText) or nameof(FilterEnabled):
+                // 显示模式/过滤切换：全量重绘，视图恢复原滚动位置
                 RxRendered?.Invoke(this, new RxRender(RxRenderKind.Full, BuildFullText()));
                 break;
             case nameof(LogEnabled):

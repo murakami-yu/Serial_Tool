@@ -109,6 +109,44 @@ public sealed class SerialBackend : ISerialBackend
         port.Write(buf, 0, buf.Length);
     }
 
+    // ---------- 控制引脚（RJCP：RtsEnable/DtrEnable 可写，CtsHolding/DsrHolding 只读；无 CD/RI） ----------
+
+    /// <summary>RTS 输出电平。端口未打开时读取返回 false、写入静默忽略。</summary>
+    public bool RtsEnabled
+    {
+        get => _port is { IsOpen: true } p && p.RtsEnable;
+        set
+        {
+            if (_port is { IsOpen: true } p)
+                p.RtsEnable = value;
+        }
+    }
+
+    /// <summary>DTR 输出电平。端口未打开时读取返回 false、写入静默忽略。</summary>
+    public bool DtrEnabled
+    {
+        get => _port is { IsOpen: true } p && p.DtrEnable;
+        set
+        {
+            if (_port is { IsOpen: true } p)
+                p.DtrEnable = value;
+        }
+    }
+
+    /// <summary>输入引脚状态（设备拔出等异常时返回全 false）。</summary>
+    public (bool Cts, bool Dsr) Signals
+    {
+        get
+        {
+            if (_port is { IsOpen: true } p)
+            {
+                try { return (p.CtsHolding, p.DsrHolding); }
+                catch { /* 拔线瞬间的 IO 异常按无信号处理 */ }
+            }
+            return (false, false);
+        }
+    }
+
     public void Close()
     {
         _running = false;

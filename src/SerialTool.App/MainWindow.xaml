@@ -4,13 +4,16 @@
         xmlns:vm="clr-namespace:SerialTool.App.ViewModels"
         xmlns:sp="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
         Title="Serial Tool — 通用串口调试工具"
-        Width="1200" Height="740" MinWidth="1000" MinHeight="560"
+        Width="1220" Height="740" MinWidth="1220" MinHeight="660"
         SizeChanged="MainWindow_SizeChanged"
         Background="{StaticResource BgBrush}"
         WindowStartupLocation="CenterScreen">
     <Window.DataContext>
         <vm:MainViewModel/>
     </Window.DataContext>
+
+    <!-- 窗口 MinWidth=1220：实测 WrapPanel 行（顶部功能条/发送区顶行/串口配置排）不换行阈值 ~1185
+         + 字体度量余量；再窄这些行会折行错位（2026-09-01 实测）。默认宽与 MinWidth 一致，启动即不换行 -->
 
     <Grid x:Name="RootGrid" Margin="12">
         <Grid.ColumnDefinitions>
@@ -25,10 +28,10 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- ===== 顶部功能条（独立框单行）：帧解析组 | 接收显示组，位置固定不受窗口缩放影响 ===== -->
+        <!-- ===== 顶部功能条（独立框）：帧解析组 | 接收显示组。WrapPanel：窗口变窄时整组换行，不裁切 ===== -->
         <GroupBox Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Header="帧解析 · 接收显示"
                   BorderBrush="{StaticResource BorderBrush}" Foreground="{StaticResource MutedBrush}">
-            <StackPanel Orientation="Horizontal" Margin="4">
+            <WrapPanel Margin="4">
                 <!-- 帧解析组 -->
                 <CheckBox Content="启用" IsChecked="{Binding ParseEnabled}" VerticalAlignment="Center"
                           ToolTip="按模板解析接收字节流，按帧结构化显示（粘包/半包自动处理；多个启用模板并行仲裁）"/>
@@ -59,17 +62,34 @@
                 <Button Content="日志位置" Command="{Binding BrowseLogCommand}" Margin="16,0,0,0"/>
                 <Button Content="打开目录" Command="{Binding OpenLogFolderCommand}" Margin="8,0,0,0"/>
                 <Button Content="清空" Command="{Binding ClearRxCommand}" Margin="8,0,0,0"/>
+
+                <!-- 分隔竖线 -->
+                <Rectangle Width="1" Margin="16,2" Fill="{StaticResource BorderBrush}"
+                           VerticalAlignment="Stretch"/>
+
+                <!-- 接收过滤组：只影响视图，缓冲与日志始终全量 -->
+                <CheckBox Content="过滤" IsChecked="{Binding FilterEnabled}" Margin="0,0,0,0"
+                          VerticalAlignment="Center"
+                          ToolTip="只显示命中行（数据缓冲与日志文件不受影响）"/>
+                <TextBox Text="{Binding RxFilterText, UpdateSourceTrigger=PropertyChanged}"
+                         Width="110" Margin="6,0,0,0" VerticalAlignment="Center"
+                         Style="{StaticResource Mono}"
+                         ToolTip="HEX 子串（如 AA 55，忽略空格/大小写）或文本子串"/>
                 <CheckBox Content="波形" IsChecked="{Binding ShowWavePanel}" Margin="16,0,0,0"
                           VerticalAlignment="Center"
-                          ToolTip="显示 / 隐藏时序图面板（状态记忆）" Checked="CheckBox_Checked"/>
-            </StackPanel>
+                          ToolTip="显示 / 隐藏图表面板（状态记忆）"
+                          Checked="WavePanelToggle_Changed" Unchecked="WavePanelToggle_Changed"/>
+            </WrapPanel>
         </GroupBox>
 
-        <!-- ===== 左列：接收区 + 可折叠时序图 ===== -->
-        <Grid Grid.Row="1" Grid.Column="0">
+        <!-- ===== 左列：接收区 + 可折叠图表（比例行 + 分隔条；窗口缩小时两区等比压缩，永不重叠） ===== -->
+        <!-- 左列容器裁切越界渲染：接收区/图表无论内容多高，绘制都限制在本区内，绝不覆盖下方框架；
+             顶部 10 与右列面板/底部条对齐，各框架垂直间距统一 -->
+        <Grid Grid.Row="1" Grid.Column="0" Margin="0,10,0,0" ClipToBounds="True">
             <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
+                <RowDefinition x:Name="RxRowDef" Height="2.4*" MinHeight="80"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition x:Name="ChartRowDef" Height="1.6*" MinHeight="230"/>
             </Grid.RowDefinitions>
 
             <!-- 接收区（纯数据展示） -->
@@ -81,20 +101,165 @@
                          MouseLeave="RxOutput_MouseLeave"/>
             </GroupBox>
 
-            <!-- 时序图：帧/数据块按时间戳入图；绿=校验通过 红=错误帧；滚轮缩放/拖动平移 -->
-            <GroupBox Grid.Row="1" Header="时序图" BorderBrush="{StaticResource BorderBrush}"
-                      Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"
+            <!-- 分隔条：拖动调整接收区 / 图表高度比（图表隐藏时随行收起） -->
+            <GridSplitter Grid.Row="1" Height="6" Margin="0,2"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          ResizeBehavior="PreviousAndNext" ResizeDirection="Rows"
+                          Focusable="False" Cursor="SizeNS"
+                          Visibility="{Binding ShowWavePanel, Converter={StaticResource BoolToVis}}"/>
+
+            <!-- 图表：时序图 / 字段曲线 两页；「波形」复选框控制整个图表区显隐。
+                 裁切兜底：内容最小高度之和若超出本框（极端缩放），在框内裁切而非覆盖下方框架 -->
+            <GroupBox Grid.Row="2" Header="图表（时序 / 字段曲线）" BorderBrush="{StaticResource BorderBrush}"
+                      Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" ClipToBounds="True"
                       Visibility="{Binding ShowWavePanel, Converter={StaticResource BoolToVis}}">
-                <DockPanel Margin="4">
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
-                        <CheckBox Content="跟随最新" IsChecked="{Binding WaveFollow}"
-                                  ToolTip="勾选：视图自动锁定最近 30 秒；取消后可自由缩放平移"/>
-                        <TextBlock Text="蓝=RX 橙=TX 逐位方波(起始位+8数据位+停止位) 按波特率重建  跟随窗口100ms 滚轮缩放·拖动平移"
-                                   Margin="16,0,0,0" VerticalAlignment="Center"
-                                   Foreground="{StaticResource MutedBrush}"/>
-                    </StackPanel>
-                    <sp:WpfPlot x:Name="WavePlot" Height="220"/>
-                </DockPanel>
+                <TabControl Margin="4" Background="Transparent">
+                    <!-- 第一页：时序图（帧/数据块按时间戳入图；绿=校验通过 红=错误帧；滚轮缩放/拖动平移） -->
+                    <TabItem Header="时序图">
+                        <DockPanel Margin="0,4,0,0">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                                <CheckBox Content="跟随最新" IsChecked="{Binding WaveFollow}"
+                                          ToolTip="勾选：视图自动锁定最近 30 秒；取消后可自由缩放平移"/>
+                                <TextBlock Text="蓝=RX 橙=TX 逐位方波(起始位+8数据位+停止位) 按波特率重建  跟随窗口100ms 滚轮缩放·拖动平移"
+                                           Margin="16,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource MutedBrush}"/>
+                            </StackPanel>
+                            <!-- 图表画布：白色圆角卡片（ScottPlot 背景置透明，白底与圆角由本 Border 提供） -->
+                            <Border CornerRadius="6" Background="{StaticResource PanelBrush}"
+                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                    SnapsToDevicePixels="True">
+                                <sp:WpfPlot x:Name="WavePlot" MinHeight="140" Background="Transparent"/>
+                            </Border>
+                        </DockPanel>
+                    </TabItem>
+
+                    <!-- 第二页：字段曲线（仅解析成功帧采样）；操作按钮并入工具条，曲线图填满剩余高度 -->
+                    <TabItem Header="字段曲线">
+                        <DockPanel Margin="0,4,0,0">
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Content="添加" Command="{Binding AddPlotCommand}"/>
+                                    <Button Content="删除选中" Command="{Binding RemoveSelectedPlotCommand}" Margin="8,0,0,0"/>
+                                    <Button Content="清空" Command="{Binding ClearPlotsCommand}" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <CheckBox Content="跟随最新" IsChecked="{Binding WaveFollow}"
+                                          VerticalAlignment="Center"
+                                          ToolTip="勾选：视图自动锁定最近 60 秒；取消后可自由缩放平移"/>
+                                <TextBlock Text="需开启「帧解析」，按曲线配置从帧数据域取值  滚轮缩放·拖动平移"
+                                           Margin="16,0,16,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource MutedBrush}"/>
+                            </DockPanel>
+
+                            <!-- 配置表：底部固定高度（宽表可横向滚动）；圆角卡片与多帧/自动应答表格同款 -->
+                            <Border DockPanel.Dock="Bottom" Height="96" Margin="0,6,0,0"
+                                    CornerRadius="6" Background="{StaticResource PanelBrush}"
+                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                    SnapsToDevicePixels="True">
+                                <DataGrid ItemsSource="{Binding FieldPlots}"
+                                          SelectedItem="{Binding SelectedPlot}"
+                                          VerticalScrollBarVisibility="Auto">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="启用" Width="40" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="名称" Width="*" MinWidth="64">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="模板" Width="*" MinWidth="72">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Template, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Foreground="{StaticResource MutedBrush}"
+                                                         ToolTip="限定来源模板名，空 = 任意模板"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="命令HEX" Width="66" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding CommandHex, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Style="{StaticResource Mono}"
+                                                         ToolTip="命令域前缀过滤，空 = 不过滤"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="偏移" Width="44" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Offset, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="宽度" Width="54" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <!-- MinWidth=0 覆盖全局下拉框样式的 90：列仅 54 宽，
+                                                     不清零会横向溢出压住右侧「大端」列边界 -->
+                                                <ComboBox ItemsSource="{Binding WidthChoices}"
+                                                          SelectedItem="{Binding Width, UpdateSourceTrigger=PropertyChanged}"
+                                                          MinWidth="0"
+                                                          Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="大端" Width="38" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding BigEndian, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="符号" Width="38" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Signed, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="缩放" Width="52" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Scale, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="单位" Width="46" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Unit, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+
+                            <!-- 曲线画布：白色圆角卡片（同左页时序图） -->
+                            <Border CornerRadius="6" Background="{StaticResource PanelBrush}"
+                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                    SnapsToDevicePixels="True">
+                                <sp:WpfPlot x:Name="FieldPlotCtl" MinHeight="60" Background="Transparent"/>
+                            </Border>
+                        </DockPanel>
+                    </TabItem>
+                </TabControl>
             </GroupBox>
         </Grid>
 
@@ -106,20 +271,79 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 发送区 -->
+            <!-- 发送区：顶行控制一字排开（引脚 + 多帧面板 + HEX发送/发送按钮，原右侧竖列并入）；
+                 WrapPanel 窗口变窄时整组换行不裁切（同顶部功能条策略），输入框全宽填满剩余高度 -->
             <GroupBox Grid.Column="0" Header="发送区" BorderBrush="{StaticResource BorderBrush}"
                       Foreground="{StaticResource MutedBrush}">
                 <DockPanel Margin="4">
-                    <!-- 右侧按钮列：HEX 贴顶、发送贴底，与输入框上下边对齐 -->
-                    <DockPanel DockPanel.Dock="Right" Margin="10,0,0,0">
-                        <CheckBox DockPanel.Dock="Top" Content="HEX 发送" IsChecked="{Binding TxHexMode}"
-                                  HorizontalAlignment="Center"/>
-                        <Button DockPanel.Dock="Bottom" Content="发送" Command="{Binding SendCommand}"
-                                FontWeight="Bold"/>
-                        <!-- 末位占位：避免"发送"被当作 fill 拉伸 -->
-                        <Rectangle/>
-                    </DockPanel>
-                    <!-- 输入框填满剩余高度（72 保底），底边与串口配置第二排齐平 -->
+                    <!-- 顶行：全部 28px 基线控件水平对齐（复选框统一带 Content 的应用形态） -->
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <!-- RTS/DTR 手动控制 + CTS/DSR 输入指示：绿=有效 灰=无效，50ms 轮询刷新（仅串口模式；
+                             TCP 无物理引脚整组隐藏，尾部分隔线随组收起） -->
+                        <StackPanel Orientation="Horizontal"
+                                    Visibility="{Binding IsSerial, Converter={StaticResource BoolToVis}}">
+                            <CheckBox Content="RTS" IsChecked="{Binding RtsOn}" IsEnabled="{Binding CanControlPins}"
+                                      VerticalAlignment="Center"
+                                      ToolTip="RTS 输出电平手动控制（ESP32/STM32 复位与 boot 模式常用）；连接串口后可用"/>
+                            <CheckBox Content="DTR" IsChecked="{Binding DtrOn}" IsEnabled="{Binding CanControlPins}"
+                                      Margin="14,0,0,0" VerticalAlignment="Center"
+                                      ToolTip="DTR 输出电平手动控制；连接串口后可用"/>
+
+                            <Rectangle Width="1" Margin="16,4" Fill="{StaticResource BorderBrush}"
+                                       VerticalAlignment="Stretch"/>
+
+                            <!-- 输入引脚指示灯：绿=有效 灰=无效 -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse Width="10" Height="10" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="#9AA0A6"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding CtsOn}" Value="True">
+                                                    <Setter Property="Fill" Value="#3DA35D"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="CTS" VerticalAlignment="Center" Margin="5,0,0,0"
+                                           Foreground="{StaticResource MutedBrush}"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                                <Ellipse Width="10" Height="10" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="#9AA0A6"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DsrOn}" Value="True">
+                                                    <Setter Property="Fill" Value="#3DA35D"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="DSR" VerticalAlignment="Center" Margin="5,0,0,0"
+                                           Foreground="{StaticResource MutedBrush}"/>
+                            </StackPanel>
+
+                            <Rectangle Width="1" Margin="16,4" Fill="{StaticResource BorderBrush}"
+                                       VerticalAlignment="Stretch"/>
+                        </StackPanel>
+
+                        <CheckBox Content="多帧面板" IsChecked="{Binding ShowFramesPanel}"
+                                  VerticalAlignment="Center"
+                                  Checked="FramesPanelToggle_Changed" Unchecked="FramesPanelToggle_Changed"
+                                  ToolTip="显示 / 隐藏右侧多帧发送面板（状态记忆）"/>
+
+                        <Rectangle Width="1" Margin="16,4" Fill="{StaticResource BorderBrush}"
+                                   VerticalAlignment="Stretch"/>
+
+                        <CheckBox Content="HEX 发送" IsChecked="{Binding TxHexMode}" VerticalAlignment="Center"/>
+                        <Button Content="发送" Command="{Binding SendCommand}" FontWeight="Bold"
+                                Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </WrapPanel>
+
+                    <!-- 输入框：全宽填满剩余高度（72 保底）；Enter 发送、Shift+Enter 换行 -->
                     <TextBox Style="{StaticResource Mono}"
                              Text="{Binding TxInput, UpdateSourceTrigger=PropertyChanged}"
                              MinHeight="72" VerticalContentAlignment="Top"
@@ -187,7 +411,8 @@
                         </Button>
                     </WrapPanel>
 
-                    <!-- 第二排：通信参数（仅串口模式；TCP 模式整排隐藏） -->
+                    <!-- 第二排：通信参数（仅串口模式；TCP 模式整排隐藏）。
+                         RTS/DTR/CTS/DSR 引脚控制已迁至「发送区」顶行 -->
                     <WrapPanel Margin="0,8,0,0"
                                Visibility="{Binding IsSerial, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="波特率" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
@@ -216,99 +441,221 @@
                       ResizeDirection="Columns" Focusable="False"
                       Cursor="SizeWE"/>
 
-        <!-- ===== 多帧发送（右列，与接收区同高；可通过状态栏开关隐藏） ===== -->
-        <GroupBox x:Name="FramesPanel" Grid.Row="1" Grid.Column="2"
-                  Header="多帧发送（勾选循环按周期发送，最小 50ms）"
+        <!-- ===== 右列工具面板（与接收区同高；可通过状态栏开关隐藏）：多帧发送 / 自动应答。裁切保证不越界覆盖 ===== -->
+        <GroupBox x:Name="FramesPanel" Grid.Row="1" Grid.Column="2" ClipToBounds="True"
+                  Header="发送工具（多帧发送 / 自动应答）"
                   BorderBrush="{StaticResource BorderBrush}" Margin="10,10,0,0">
-            <!-- 表格占剩余高度（出滚动条），按钮排固定在底部，窗口再矮也不会被挤出去 -->
-            <Grid Margin="4">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+            <TabControl Margin="4" Background="Transparent">
+                <!-- 第一页：多帧发送 -->
+                <TabItem Header="多帧发送（循环最小 50ms）">
+                    <!-- 表格占剩余高度（出滚动条），按钮排固定在底部，窗口再矮也不会被挤出去 -->
+                    <Grid Margin="0,4,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
 
-                <!-- 表格圆角框：包裹层提供白底 + 圆角边框（DataGrid 自身透明填充） -->
-                <Border Grid.Row="0" CornerRadius="6"
-                        Background="{StaticResource PanelBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="1" Margin="0,2,0,0"
-                        SnapsToDevicePixels="True">
-                <DataGrid ItemsSource="{Binding SendFrames}"
-                          SelectedItem="{Binding SelectedFrame}"
-                          VerticalScrollBarVisibility="Auto">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="#" Binding="{Binding Index, Mode=OneWay}"
-                                            IsReadOnly="True" Width="32" CanUserResize="False">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="VerticalAlignment" Value="Center"/>
-                                    <Setter Property="HorizontalAlignment" Value="Center"/>
-                                    <!-- 锁定前景色：行选中时系统会把文字刷白，导致透明底上看不见 -->
-                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
-                        <DataGridTemplateColumn Header="内容" Width="1.6*" MinWidth="120">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBox Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
-                                             Padding="4,2" Margin="2" VerticalAlignment="Center"
-                                             FontFamily="Cascadia Mono, Consolas"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="备注" Width="*" MinWidth="80">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
-                                             Padding="4,2" Margin="2" VerticalAlignment="Center"
-                                             Foreground="{StaticResource MutedBrush}"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="HEX" Width="44" CanUserResize="False">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <CheckBox IsChecked="{Binding IsHex, UpdateSourceTrigger=PropertyChanged}"
-                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="周期ms" Width="64" CanUserResize="False">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBox Text="{Binding PeriodMs, UpdateSourceTrigger=PropertyChanged}"
-                                             Padding="4,2" Margin="2" VerticalAlignment="Center"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="循环" Width="44" CanUserResize="False">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <CheckBox IsChecked="{Binding IsCyclic, UpdateSourceTrigger=PropertyChanged}"
-                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="操作" Width="62" CanUserResize="False">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Button Content="发送" Command="{Binding SendCommand}"
-                                            Padding="4,2" MinWidth="44"
-                                            VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
-                </Border>
+                        <!-- 表格圆角框：包裹层提供白底 + 圆角边框（DataGrid 自身透明填充） -->
+                        <Border Grid.Row="0" CornerRadius="6"
+                                Background="{StaticResource PanelBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" Margin="0,2,0,0"
+                                SnapsToDevicePixels="True">
+                            <DataGrid ItemsSource="{Binding SendFrames}"
+                                      SelectedItem="{Binding SelectedFrame}"
+                                      VerticalScrollBarVisibility="Auto">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="#" Binding="{Binding Index, Mode=OneWay}"
+                                                        IsReadOnly="True" Width="32" CanUserResize="False">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                                <Setter Property="HorizontalAlignment" Value="Center"/>
+                                                <!-- 锁定前景色：行选中时系统会把文字刷白，导致透明底上看不见 -->
+                                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTemplateColumn Header="内容" Width="1.6*" MinWidth="120">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Style="{StaticResource Mono}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="备注" Width="*" MinWidth="80">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Foreground="{StaticResource MutedBrush}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="HEX" Width="44" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsHex, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="周期ms" Width="64" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding PeriodMs, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="循环" Width="44" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsCyclic, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="操作" Width="62" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="发送" Command="{Binding SendCommand}"
+                                                        Padding="4,2" MinWidth="44"
+                                                        VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
 
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
-                    <Button Content="添加" Command="{Binding AddFrameCommand}"/>
-                    <Button Content="删除选中" Command="{Binding RemoveSelectedFrameCommand}" Margin="8,0,0,0"/>
-                    <Button Content="清空" Command="{Binding ClearFramesCommand}" Margin="8,0,0,0"/>
-                </StackPanel>
-            </Grid>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Content="添加" Command="{Binding AddFrameCommand}"/>
+                            <Button Content="删除选中" Command="{Binding RemoveSelectedFrameCommand}" Margin="8,0,0,0"/>
+                            <Button Content="清空" Command="{Binding ClearFramesCommand}" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- 第二页：自动应答（收到匹配的成功帧 → 延迟回发；需开启帧解析） -->
+                <TabItem Header="自动应答（需开帧解析）">
+                    <Grid Margin="0,4,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Margin="0,2,0,4" VerticalAlignment="Center"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   Text="收到匹配的成功帧后自动回发回复帧（延迟调度粒度 50ms，回显行 ⇄）；匹配条件：模板 + 命令前缀 + 子串（均可选，同时配置取与）"/>
+
+                        <Border Grid.Row="1" CornerRadius="6"
+                                Background="{StaticResource PanelBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" Margin="0,2,0,0"
+                                SnapsToDevicePixels="True">
+                            <DataGrid ItemsSource="{Binding AutoReplies}"
+                                      SelectedItem="{Binding SelectedReply}"
+                                      VerticalScrollBarVisibility="Auto">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="启用" Width="40" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="名称" Width="*" MinWidth="56">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="模板" Width="*" MinWidth="64">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Template, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Foreground="{StaticResource MutedBrush}"
+                                                         ToolTip="限定来源模板名，空 = 任意模板"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="命令HEX" Width="72" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding CommandHex, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Style="{StaticResource Mono}"
+                                                         ToolTip="命令域前缀过滤，空 = 不过滤"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="匹配HEX" Width="72" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding MatchHex, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Style="{StaticResource Mono}"
+                                                         ToolTip="帧内任意位置子串，空 = 不过滤"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="回复HEX" Width="1.6*" MinWidth="110">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding ReplyHex, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"
+                                                         Style="{StaticResource Mono}"
+                                                         ToolTip="命中后发送的完整帧（HEX）"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="延迟ms" Width="58" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}"
+                                                         Padding="4,2" Margin="2" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="仅一次" Width="48" CanUserResize="False">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Once, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          ToolTip="首次命中后自动禁用（握手类指令防重复应答）"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="命中" Binding="{Binding HitCount, Mode=OneWay}"
+                                                        IsReadOnly="True" Width="48" CanUserResize="False">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                                <Setter Property="HorizontalAlignment" Value="Center"/>
+                                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Content="添加" Command="{Binding AddReplyCommand}"/>
+                            <Button Content="删除选中" Command="{Binding RemoveSelectedReplyCommand}" Margin="8,0,0,0"/>
+                            <Button Content="清空" Command="{Binding ClearRepliesCommand}" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+            </TabControl>
         </GroupBox>
 
         <!-- ===== 状态栏（横跨全宽） ===== -->
@@ -320,13 +667,12 @@
                            Foreground="{StaticResource MutedBrush}">
                     <Run Text="RX: "/><Run Text="{Binding RxCount, Mode=OneWay}"/>
                     <Run Text="  TX: "/><Run Text="{Binding TxCount, Mode=OneWay}"/>
+                    <Run Text="  速率 "/><Run Text="{Binding RxRateText, Mode=OneWay}"/>
                     <Run Text="  帧✓ "/><Run Text="{Binding FrameOkCount, Mode=OneWay}"/>
                     <Run Text=" / ✗ "/><Run Text="{Binding FrameErrCount, Mode=OneWay}"/>
+                    <Run Text="  时长 "/><Run Text="{Binding ElapsedText, Mode=OneWay}"/>
                 </TextBlock>
-                <CheckBox DockPanel.Dock="Right" Content="多帧面板" IsChecked="{Binding ShowFramesPanel}"
-                          Margin="0,0,16,0" VerticalAlignment="Center"
-                          Checked="FramesPanelToggle_Changed" Unchecked="FramesPanelToggle_Changed"
-                          ToolTip="显示 / 隐藏右侧多帧发送面板（状态记忆）"/>
+                <!-- 「多帧面板」开关已迁至「发送区」顶行（与引脚控制同一行） -->
                 <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedBrush}"/>
             </DockPanel>

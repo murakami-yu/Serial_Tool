@@ -27,6 +27,7 @@ public partial class MainWindow : Window
         {
             vm.RxRendered += OnRxRendered;
             vm.WaveRendered += OnWaveRendered;
+            vm.FieldPlotsRendered += OnFieldPlotsRendered;
         }
         Closed += (_, _) =>
         {
@@ -34,12 +35,19 @@ public partial class MainWindow : Window
             {
                 vm.RxRendered -= OnRxRendered;
                 vm.WaveRendered -= OnWaveRendered;
+                vm.FieldPlotsRendered -= OnFieldPlotsRendered;
                 vm.Dispose();
             }
         };
-        // 按持久化设置应用面板初始状态（绑定触发的事件可能早于元素就绪）
-        Dispatcher.BeginInvoke(ApplyFramesPanelState, System.Windows.Threading.DispatcherPriority.Loaded);
+        // 按持久化设置应用面板初始状态（绑定触发的事件可能早于元素就绪；
+        // 且记忆为 false 时复选框无变化事件，必须在此兜底）
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            ApplyFramesPanelState();
+            ApplyWavePanelState();
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
         InitWavePlot();
+        InitFieldPlot();
 
         // 拖动分隔条过程中持续钳制右栏宽度：本机 DPI 环境异常时（150% 缩放 + 虚拟显示驱动），
         // 拖动增量会被放大数百倍，GridSplitter 会写出远超窗口的列宽，必须当场掐掉
@@ -111,6 +119,46 @@ public partial class MainWindow : Window
         FramesSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    // ---------- 图表面板（时序 / 字段曲线）显示/隐藏 ----------
+
+    // 图表行保底高（与 XAML 中 ChartRowDef 的 MinHeight 保持一致，恢复显示时写回）
+    private const double ChartPanelMinHeight = 230;
+    // 分隔条拖动会把星号行改成绝对值，隐藏前记住两行比例，恢复时原样还原
+    private GridLength _savedRxRowHeight = new(2.4, GridUnitType.Star);
+    private GridLength _savedChartRowHeight = new(1.6, GridUnitType.Star);
+
+    private void WavePanelToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        // XAML 初始化早期（行定义未就绪）由 Loaded 时的初始应用兜底
+        if (RxRowDef is null || ChartRowDef is null) return;
+        ApplyWavePanelState();
+    }
+
+    private void ApplyWavePanelState()
+    {
+        var show = DataContext is MainViewModel { ShowWavePanel: true };
+        if (show)
+        {
+            RxRowDef.Height = _savedRxRowHeight;
+            ChartRowDef.Height = _savedChartRowHeight;
+            ChartRowDef.MinHeight = ChartPanelMinHeight;
+        }
+        else
+        {
+            // 星号行的空间由行定义分配，子元素 Collapsed 并不回收；先记当前比例再清零
+            if (ChartRowDef.Height.Value > 0)
+            {
+                _savedRxRowHeight = RxRowDef.Height;
+                _savedChartRowHeight = ChartRowDef.Height;
+            }
+            // 行定义带 MinHeight=230，不清零则空行仍占保底高，接收区无法占满
+            ChartRowDef.MinHeight = 0;
+            ChartRowDef.Height = new GridLength(0);
+            // 分隔条拖动会把接收区行改成绝对高度，隐藏期间窗口再拉伸又会留空档；重置回 * 占满
+            RxRowDef.Height = new GridLength(1, GridUnitType.Star);
+        }
+    }
+
     // ---------- 时序图（逻辑分析仪式逐位方波） ----------
 
     private ScottPlot.Plottables.Scatter? _waveRx;
@@ -124,6 +172,9 @@ public partial class MainWindow : Window
     /// SkiaSharp 本身解析正常），轴标签用英文；中文图例说明由面板顶部的 WPF 提示行承担。</summary>
     private void InitWavePlot()
     {
+        // 图表白底与圆角由外层 WPF Border 提供，ScottPlot 自身背景置透明（否则直角白块盖住圆角）
+        WavePlot.Plot.FigureBackground.Color = PlotTransparent;
+        WavePlot.Plot.DataBackground.Color = PlotTransparent;
         WavePlot.Plot.Axes.Bottom.Label.Text = "Time (s)";
         WavePlot.Plot.Axes.Left.Label.Text = "RX / TX";
         WavePlot.Plot.Axes.SetLimitsY(-1.0, 2.4);
@@ -195,6 +246,61 @@ public partial class MainWindow : Window
         WavePlot.Refresh();
     }
 
+    // ---------- 字段曲线（帧数据域取值随时间折线） ----------
+
+    private readonly List<ScottPlot.Plottables.Scatter> _fieldScatters = new();
+    private static readonly string[] FieldPalette =
+        { "#2B7DE0", "#E08A2B", "#3DA35D", "#C1436D", "#7B5CD6", "#00A6A6" };
+    private const double FieldFollowWindowSec = 60; // 跟随窗口（语义级曲线看长趋势）
+
+    // 全透明色（5.1.59 无 Color.Transparent 预定义）：图表自身背景让位于外层 WPF 圆角卡片
+    private static readonly ScottPlot.Color PlotTransparent = ScottPlot.Color.FromARGB(0);
+
+    private void InitFieldPlot()
+    {
+        // 同时序图：背景透明，白底圆角由外层 Border 提供；图例去白底方块
+        FieldPlotCtl.Plot.FigureBackground.Color = PlotTransparent;
+        FieldPlotCtl.Plot.DataBackground.Color = PlotTransparent;
+        FieldPlotCtl.Plot.Legend.BackgroundColor = PlotTransparent;
+        FieldPlotCtl.Plot.Legend.ShadowColor = PlotTransparent;
+        FieldPlotCtl.Plot.Axes.Bottom.Label.Text = "Time (s)";
+    }
+
+    /// <summary>曲线刷新：重建各条 Scatter；跟随模式锁定最近 60 秒。
+    /// 图例用曲线名（ScottPlot 中文渲染为豆腐块，建议英文命名，单位进顶部提示行说明）。</summary>
+    private void OnFieldPlotsRendered(object? sender, EventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        if (!vm.ShowWavePanel) return; // 面板隐藏时跳过渲染（采样继续累计）
+
+        var snap = vm.FieldPlotSnapshot();
+
+        foreach (var s in _fieldScatters)
+            FieldPlotCtl.Plot.Remove(s);
+        _fieldScatters.Clear();
+
+        var last = double.NaN;
+        for (var i = 0; i < snap.Length; i++)
+        {
+            var c = snap[i];
+            if (c.Xs.Length == 0) continue;
+            var s = FieldPlotCtl.Plot.Add.Scatter(c.Xs, c.Ys);
+            s.LineWidth = 1.4f;
+            s.MarkerSize = 0;
+            s.Color = ScottPlot.Color.FromHtml(FieldPalette[i % FieldPalette.Length]);
+            s.LegendText = c.Unit.Length == 0 ? c.Name : $"{c.Name} ({c.Unit})";
+            _fieldScatters.Add(s);
+            if (double.IsNaN(last) || c.Xs[^1] > last)
+                last = c.Xs[^1];
+        }
+
+        if (_fieldScatters.Count > 0)
+            FieldPlotCtl.Plot.ShowLegend();
+        if (vm.WaveFollow && !double.IsNaN(last))
+            FieldPlotCtl.Plot.Axes.SetLimitsX(last - FieldFollowWindowSec, last + 1);
+        FieldPlotCtl.Refresh();
+    }
+
     // ---------- 接收框渲染（事件驱动：追加保留滚动位置） ----------
 
     /// <summary>跟随策略：勾选"跟随最新"且鼠标不在框上（悬停 = 暂停查看）。</summary>
@@ -239,11 +345,6 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel { AutoScroll: true })
             RxOutput.ScrollToEnd();
-    }
-
-    private void CheckBox_Checked(object sender, RoutedEventArgs e)
-    {
-
     }
 
     /// <summary>重新勾选"跟随最新"：立即跳到最新（若正在悬停则等移出后再跟）。

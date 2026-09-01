@@ -66,9 +66,12 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 
 ### 2.2 布局要点
 
-- **多帧面板可隐藏**：工具栏「多帧面板」开关，隐藏时右栏与分隔条完全收起、接收区占满全宽；状态与拖拽宽度记忆（Config/ui_settings.json）
+- **多帧面板可隐藏**：「发送区」顶行「多帧面板」开关（与 RTS/DTR/CTS/DSR 引脚控制同一行，2026-09-01 迁入），隐藏时右栏与分隔条完全收起、接收区占满全宽；状态与拖拽宽度记忆（Config/ui_settings.json）
 - **AvalonDock 停靠体系**（IDE 式，V1.2/V1.3 随多面板引入）：接收区/波形区为文档标签页，端口配置/发送为工具窗格
 - **解析高亮**：接收区支持"帧模式"——按模板着色帧头/命令/数据/校验域，校验失败红色标记（V1.1）
+- **最小窗口宽 1220**：实测顶部功能条 / 发送区顶行 / 串口配置排三处 WrapPanel 行不换行阈值 ~1185 + 字体余量（2026-09-01）；窄于该值这些行折行，故 MinWidth 与默认宽取 1220
+- **各框互不覆盖（2026-09-01 V1.2.x）**：左列「接收区 / 图表」为比例行（2.4\* : 1.6\*）+ 可拖 GridSplitter；左列容器、图表 GroupBox、右列工具面板均 `ClipToBounds`——任何缩放下越界渲染在自己框内裁切，绝不覆盖相邻框架。窗口 `MinHeight=660` 按实测最坏组合兜底（功能条两行 87 + 接收区 80 + 分隔条 + 图表 230 + 底部条 149 + 状态栏 47 + 边距），保证行的最小高度被真正尊重（WPF Grid 在可用空间小于各行 MinHeight 之和时会**无视 MinHeight 按星比压缩**，正是"图表被底部条盖住"的根因）
+- **等宽输入 28px 基线（2026-09-01）**：`Mono` 样式只换字体族（Cascadia 行高偏大，靠收紧行距落回基线），表格/工具条中 Mono 框与普通框同高、字号全局统一
 - **浅色主题（SSCOM 经典风格）**：白色背景 + 标准 Windows 控件观感（用户指定，2026-08-29 由深色改浅色）
 - **统一控件风格体系**：TextBox / ComboBox / Button / CheckBox 全部圆角（4px 框 / 3px 勾选框）+ 蓝色高亮（悬停/聚焦/展开）；全局 28px 控件高度基线保证混排行垂直居中；接收/发送框顶部对齐 + 自动换行 + 纵向刷屏（2026-08-29 UI 打磨定稿）
 - **状态可见**：标题栏连接状态 + 底部状态栏（RX/TX 计数、帧统计）
@@ -88,6 +91,7 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 | V1.0 | WPF 骨架：项目结构、MVVM 模式（CommunityToolkit）、串口后端（SerialPortStream + WMI 设备名）、TCP 后端、收发控制台 UI、会话日志、多帧发送（手动/每帧独立周期循环，JSON 持久化）、自包含发布脚本 | `SerialTool.slnx`、`Backends/SerialBackend.cs`、`Backends/TcpBackend.cs`、`SendFrameViewModel.cs`、发布脚本 | ✅ 完成（2026-08-29：构建零警告、单测 12/12、启动冒烟通过） |
 | V1.1 | 帧解析引擎：缓冲扫描解析器（粘包/半包/重同步）、校验库（CRC 查表 + XOR/累加和）、JSON 模板 + 编辑器窗口、接收区帧结构化显示、帧✓/✗ 统计 | `Core/Checksum/Checksums.cs`、`Core/Framing/{FrameTemplate,FrameParser}.cs`、`TemplateEditorWindow` | ✅ 完成（2026-08-29：41/41 单测、构建零警告、冒烟通过） |
 | V1.2 | 波形面板（ScottPlot.WPF 时序图：帧/块散点时间线 + 跟随/缩放平移） | `MainWindow` 波形面板 | ✅ 完成（2026-09-01：构建零错误、单测 48/48、冒烟通过） |
+| V1.2.x | 功能增强四件套 + 布局独立性：状态栏速率/时长统计 + 接收过滤（视图层）；RTS/DTR 控制 + CTS/DSR 指示灯；帧字段实时曲线（图表第二页）；自动应答器（右列第二页）；工具条 WrapPanel 化 + 左列比例行/Splitter/ClipToBounds 各框独立 + 等宽输入 28px 基线统一 | `Core/RxFilter.cs`、`Core/Framing/{FieldPlot,AutoReply}.cs`、`ViewModels/{FieldPlotViewModel,AutoReplyViewModel}.cs` | ✅ 完成（2026-09-01：92/92 单测、启动冒烟；[执行计划](功能增强执行计划.md)） |
 | V1.3 | 发送历史、热插拔（WM_DEVICECHANGE）、多端口标签、流控（RTS-CTS） | — | 规划 |
 | V2 | I2C 后端（FTDI.FTD2XX_NET）、扫描/寄存器读写、L2 序列图 | `Backends/I2cBackend.cs` | 规划 |
 | V3 | CAN 后端（PCAN 或 slcan）、DBC 解析、信号曲线 | `Backends/CanBackend.cs`、`Core/Dbc` | 规划 |
