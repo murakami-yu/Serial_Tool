@@ -26,16 +26,15 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel vm)
         {
             vm.RxRendered += OnRxRendered;
-            vm.WaveRendered += OnWaveRendered;
-            vm.FieldPlotsRendered += OnFieldPlotsRendered;
         }
+        // 主窗 Closing 先于 owned 窗口的关闭流程：先把图表窗切到真实关闭模式，
+        // 否则它的「X = 取消勾选」语义会取消关闭，导致主窗关了进程却不退
+        Closing += (_, _) => _chartWindow?.CloseForReal();
         Closed += (_, _) =>
         {
             if (DataContext is MainViewModel vm)
             {
                 vm.RxRendered -= OnRxRendered;
-                vm.WaveRendered -= OnWaveRendered;
-                vm.FieldPlotsRendered -= OnFieldPlotsRendered;
                 vm.Dispose();
             }
         };
@@ -46,8 +45,6 @@ public partial class MainWindow : Window
             ApplyFramesPanelState();
             ApplyWavePanelState();
         }), System.Windows.Threading.DispatcherPriority.Loaded);
-        InitWavePlot();
-        InitFieldPlot();
 
         // 拖动分隔条过程中持续钳制右栏宽度：本机 DPI 环境异常时（150% 缩放 + 虚拟显示驱动），
         // 拖动增量会被放大数百倍，GridSplitter 会写出远超窗口的列宽，必须当场掐掉
@@ -119,186 +116,67 @@ public partial class MainWindow : Window
         FramesSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // ---------- 图表面板（时序 / 字段曲线）显示/隐藏 ----------
+    // ---------- 图表窗口（时序 / 字段曲线，独立窗口）显示/隐藏 ----------
 
-    // 图表行保底高（与 XAML 中 ChartRowDef 的 MinHeight 保持一致，恢复显示时写回）
-    private const double ChartPanelMinHeight = 230;
-    // 分隔条拖动会把星号行改成绝对值，隐藏前记住两行比例，恢复时原样还原
-    private GridLength _savedRxRowHeight = new(2.4, GridUnitType.Star);
-    private GridLength _savedChartRowHeight = new(1.6, GridUnitType.Star);
+    // 每次勾选都新建窗口、取消勾选即销毁（不 Hide）：本机 SkiaSharp 表面在窗口 Hide 后会永久失效
+    //（重显后 Refresh/交互全都不再出画面，坐标轴消失的真正根因），重建是唯一可靠恢复方式。
+    // 用户拖出的位置/尺寸记在字段里，重开时还原。用户点图表窗的 X ⇔ 取消勾选（走销毁分支）。
+    private ChartWindow? _chartWindow;
+    private Rect? _chartBounds; // 上次关闭时的窗口位置尺寸（工作区坐标 DIP）
 
     private void WavePanelToggle_Changed(object sender, RoutedEventArgs e)
     {
-        // XAML 初始化早期（行定义未就绪）由 Loaded 时的初始应用兜底
-        if (RxRowDef is null || ChartRowDef is null) return;
+        // XAML 初始化期（绑定套用记忆值触发 Checked）：主窗尚未 Show，此时给图表窗设 Owner 会抛
+        // 「无法在 Owner 设置为之前未显示的 Window」——由 Loaded 时的初始应用兜底（与多帧面板同一套路）
+        if (!IsLoaded) return;
         ApplyWavePanelState();
     }
 
     private void ApplyWavePanelState()
     {
-        var show = DataContext is MainViewModel { ShowWavePanel: true };
-        if (show)
-        {
-            RxRowDef.Height = _savedRxRowHeight;
-            ChartRowDef.Height = _savedChartRowHeight;
-            ChartRowDef.MinHeight = ChartPanelMinHeight;
-        }
-        else
-        {
-            // 星号行的空间由行定义分配，子元素 Collapsed 并不回收；先记当前比例再清零
-            if (ChartRowDef.Height.Value > 0)
-            {
-                _savedRxRowHeight = RxRowDef.Height;
-                _savedChartRowHeight = ChartRowDef.Height;
-            }
-            // 行定义带 MinHeight=230，不清零则空行仍占保底高，接收区无法占满
-            ChartRowDef.MinHeight = 0;
-            ChartRowDef.Height = new GridLength(0);
-            // 分隔条拖动会把接收区行改成绝对高度，隐藏期间窗口再拉伸又会留空档；重置回 * 占满
-            RxRowDef.Height = new GridLength(1, GridUnitType.Star);
-        }
-    }
-
-    // ---------- 时序图（逻辑分析仪式逐位方波） ----------
-
-    private ScottPlot.Plottables.Scatter? _waveRx;
-    private ScottPlot.Plottables.Scatter? _waveTx;
-    private const double RxHigh = 1.6, RxLow = 1.0;   // RX 通道电平带
-    private const double TxHigh = 0.2, TxLow = -0.4;  // TX 通道电平带
-    private const double FollowWindowSec = 0.1;       // 跟随窗口 100ms（位级观察）
-
-    /// <summary>初始化时序图：轴与固定纵向范围。
-    /// 注意：ScottPlot 5.1.59 的 SkiaSharp 文本链路在此环境无法渲染中文（各级字体设置均试过仍豆腐块，
-    /// SkiaSharp 本身解析正常），轴标签用英文；中文图例说明由面板顶部的 WPF 提示行承担。</summary>
-    private void InitWavePlot()
-    {
-        // 图表白底与圆角由外层 WPF Border 提供，ScottPlot 自身背景置透明（否则直角白块盖住圆角）
-        WavePlot.Plot.FigureBackground.Color = PlotTransparent;
-        WavePlot.Plot.DataBackground.Color = PlotTransparent;
-        WavePlot.Plot.Axes.Bottom.Label.Text = "Time (s)";
-        WavePlot.Plot.Axes.Left.Label.Text = "RX / TX";
-        WavePlot.Plot.Axes.SetLimitsY(-1.0, 2.4);
-        WavePlot.Plot.Axes.Left.SetTicks(new[] { (RxHigh + RxLow) / 2, (TxHigh + TxLow) / 2 },
-            new[] { "RX", "TX" });
-    }
-
-    /// <summary>把跳变序列展开成方波拐点序列（每个跳变 = 保持点 + 边沿点），普通折线即方波。</summary>
-    private static void ExpandSquare(double[] xs, double[] ys, double prevHigh, double high, double low,
-        out double[] outXs, out double[] outYs)
-    {
-        if (xs.Length == 0)
-        {
-            outXs = Array.Empty<double>();
-            outYs = Array.Empty<double>();
-            return;
-        }
-        var ox = new List<double>(xs.Length * 2 + 1);
-        var oy = new List<double>(ox.Capacity);
-        var prevLevel = prevHigh > 0.5 ? high : low;
-        ox.Add(xs[0]); oy.Add(prevLevel); // 起始电平
-        for (var i = 0; i < xs.Length; i++)
-        {
-            var lvl = ys[i] > 0.5 ? high : low;
-            if (lvl == prevLevel) continue;
-            ox.Add(xs[i]); oy.Add(prevLevel); // 保持到跳变时刻
-            ox.Add(xs[i]); oy.Add(lvl);       // 垂直边沿
-            prevLevel = lvl;
-        }
-        outXs = ox.ToArray();
-        outYs = oy.ToArray();
-    }
-
-    /// <summary>重建一条方波曲线（逻辑分析仪电平带）。</summary>
-    private ScottPlot.Plottables.Scatter AddWaveStep(double[] xs, double[] ys, double prev, double high, double low, string hex)
-    {
-        ExpandSquare(xs, ys, prev, high, low, out var ox, out var oy);
-        var s = WavePlot.Plot.Add.Scatter(ox, oy);
-        s.LineWidth = 1.2f;
-        s.MarkerSize = 0;
-        s.Color = ScottPlot.Color.FromHtml(hex);
-        return s;
-    }
-
-    /// <summary>波形刷新：重建 RX/TX 方波；跟随模式锁定最近 100ms（位级观察窗口）。</summary>
-    private void OnWaveRendered(object? sender, EventArgs e)
-    {
         if (DataContext is not MainViewModel vm) return;
-        if (!vm.ShowWavePanel) return; // 面板隐藏时跳过渲染（缓冲继续累计）
-
-        var rx = vm.RxWaveSnapshot();
-        var tx = vm.TxWaveSnapshot();
-
-        if (_waveRx is not null) WavePlot.Plot.Remove(_waveRx);
-        if (_waveTx is not null) WavePlot.Plot.Remove(_waveTx);
-        _waveRx = AddWaveStep(rx.Xs, rx.Ys, rx.Prev, RxHigh, RxLow, "#2B7DE0");
-        _waveTx = AddWaveStep(tx.Xs, tx.Ys, tx.Prev, TxHigh, TxLow, "#E08A2B");
-
-        if (vm.WaveFollow)
+        if (vm.ShowWavePanel)
         {
-            var last = 0.0;
-            if (rx.Xs.Length > 0) last = Math.Max(last, rx.Xs[^1]);
-            if (tx.Xs.Length > 0) last = Math.Max(last, tx.Xs[^1]);
-            if (last > 0)
+            if (_chartWindow is null)
             {
-                WavePlot.Plot.Axes.SetLimitsX(last - FollowWindowSec, last + FollowWindowSec * 0.02);
+                _chartWindow = new ChartWindow(vm) { Owner = this };
+                if (_chartBounds is Rect b)
+                    RestoreChartBounds(b);
+                else
+                    PositionChartWindow(); // 首次打开：贴主窗右侧
             }
+            _chartWindow.Show();
         }
-        WavePlot.Refresh();
-    }
-
-    // ---------- 字段曲线（帧数据域取值随时间折线） ----------
-
-    private readonly List<ScottPlot.Plottables.Scatter> _fieldScatters = new();
-    private static readonly string[] FieldPalette =
-        { "#2B7DE0", "#E08A2B", "#3DA35D", "#C1436D", "#7B5CD6", "#00A6A6" };
-    private const double FieldFollowWindowSec = 60; // 跟随窗口（语义级曲线看长趋势）
-
-    // 全透明色（5.1.59 无 Color.Transparent 预定义）：图表自身背景让位于外层 WPF 圆角卡片
-    private static readonly ScottPlot.Color PlotTransparent = ScottPlot.Color.FromARGB(0);
-
-    private void InitFieldPlot()
-    {
-        // 同时序图：背景透明，白底圆角由外层 Border 提供；图例去白底方块
-        FieldPlotCtl.Plot.FigureBackground.Color = PlotTransparent;
-        FieldPlotCtl.Plot.DataBackground.Color = PlotTransparent;
-        FieldPlotCtl.Plot.Legend.BackgroundColor = PlotTransparent;
-        FieldPlotCtl.Plot.Legend.ShadowColor = PlotTransparent;
-        FieldPlotCtl.Plot.Axes.Bottom.Label.Text = "Time (s)";
-    }
-
-    /// <summary>曲线刷新：重建各条 Scatter；跟随模式锁定最近 60 秒。
-    /// 图例用曲线名（ScottPlot 中文渲染为豆腐块，建议英文命名，单位进顶部提示行说明）。</summary>
-    private void OnFieldPlotsRendered(object? sender, EventArgs e)
-    {
-        if (DataContext is not MainViewModel vm) return;
-        if (!vm.ShowWavePanel) return; // 面板隐藏时跳过渲染（采样继续累计）
-
-        var snap = vm.FieldPlotSnapshot();
-
-        foreach (var s in _fieldScatters)
-            FieldPlotCtl.Plot.Remove(s);
-        _fieldScatters.Clear();
-
-        var last = double.NaN;
-        for (var i = 0; i < snap.Length; i++)
+        else if (_chartWindow is not null)
         {
-            var c = snap[i];
-            if (c.Xs.Length == 0) continue;
-            var s = FieldPlotCtl.Plot.Add.Scatter(c.Xs, c.Ys);
-            s.LineWidth = 1.4f;
-            s.MarkerSize = 0;
-            s.Color = ScottPlot.Color.FromHtml(FieldPalette[i % FieldPalette.Length]);
-            s.LegendText = c.Unit.Length == 0 ? c.Name : $"{c.Name} ({c.Unit})";
-            _fieldScatters.Add(s);
-            if (double.IsNaN(last) || c.Xs[^1] > last)
-                last = c.Xs[^1];
+            _chartBounds = new Rect(_chartWindow.Left, _chartWindow.Top, _chartWindow.Width, _chartWindow.Height);
+            _chartWindow.CloseForReal();
+            _chartWindow = null;
         }
+    }
 
-        if (_fieldScatters.Count > 0)
-            FieldPlotCtl.Plot.ShowLegend();
-        if (vm.WaveFollow && !double.IsNaN(last))
-            FieldPlotCtl.Plot.Axes.SetLimitsX(last - FieldFollowWindowSec, last + 1);
-        FieldPlotCtl.Refresh();
+    /// <summary>按记忆的位置尺寸重开图表窗，收回工作区内（显示器布局可能已变化）。</summary>
+    private void RestoreChartBounds(Rect b)
+    {
+        if (_chartWindow is null) return;
+        var wa = SystemParameters.WorkArea;
+        var w = Math.Max(_chartWindow.MinWidth, Math.Min(b.Width, wa.Width));
+        var h = Math.Max(_chartWindow.MinHeight, Math.Min(b.Height, wa.Height));
+        _chartWindow.Width = w;
+        _chartWindow.Height = h;
+        _chartWindow.Left = Math.Max(wa.Left, Math.Min(b.X, wa.Right - w));
+        _chartWindow.Top = Math.Max(wa.Top, Math.Min(b.Y, wa.Bottom - h));
+    }
+
+    /// <summary>图表窗初始位置：贴主窗右侧、顶边对齐；右侧放不下时收回工作区内。</summary>
+    private void PositionChartWindow()
+    {
+        if (_chartWindow is null) return;
+        var wa = SystemParameters.WorkArea;
+        _chartWindow.Left = Math.Max(wa.Left,
+            Math.Min(Left + ActualWidth + 8, wa.Right - _chartWindow.Width));
+        _chartWindow.Top = Math.Max(wa.Top,
+            Math.Min(Top, wa.Bottom - _chartWindow.Height));
     }
 
     // ---------- 接收框渲染（事件驱动：追加保留滚动位置） ----------

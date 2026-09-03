@@ -978,8 +978,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ---------- UI 设置持久化 ----------
 
-    // 可选参数默认值：旧配置缺字段时按 true 处理
-    private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = true, bool WaveFollow = true);
+    // 可选参数默认值：旧配置缺字段时按此处理。
+    // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需勾选，勾选状态仍记忆
+    private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true);
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
