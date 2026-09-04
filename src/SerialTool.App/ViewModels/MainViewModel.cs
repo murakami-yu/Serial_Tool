@@ -6,6 +6,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -39,7 +40,10 @@ public enum RxRenderKind
     Full,
 }
 
-public sealed record RxRender(RxRenderKind Kind, string Text);
+/// <summary>一段同方向显示文本（连续同方向行合并，减少段落着色开销；段内行尾带 '\n'）。</summary>
+public sealed record RxSeg(string Text, bool IsTx);
+
+public sealed record RxRender(RxRenderKind Kind, IReadOnlyList<RxSeg> Segments);
 
 /// <summary>波形跳变点：时刻 + 新电平（逻辑分析仪式逐位重建）。</summary>
 public sealed record WavePt(double T, double Y);
@@ -130,6 +134,67 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>时序图面板是否显示（持久化）。</summary>
     [ObservableProperty]
     private bool _showWavePanel = true;
+
+    // ---------- 接收区 TX/RX 行颜色（持久化；渲染用冻结画刷缓存） ----------
+
+    public const string DefaultTxColor = "#0078D7"; // 主题强调蓝
+    public const string DefaultRxColor = "#1E1E1E"; // 正文字色（接收视觉不变）
+
+    /// <summary>发送行颜色（HEX 字符串，便于 JSON 持久化；→ 手动 / ⇄ 自动应答）。</summary>
+    [ObservableProperty]
+    private string _txColorHex = DefaultTxColor;
+
+    /// <summary>接收行颜色（HEX 字符串；← 数据 / ✓✗ 帧）。</summary>
+    [ObservableProperty]
+    private string _rxColorHex = DefaultRxColor;
+
+    /// <summary>发送行渲染画刷（冻结缓存，追加时按引用共享）。</summary>
+    public SolidColorBrush TxBrush { get; private set; } = MakeBrush(DefaultTxColor, DefaultTxColor);
+
+    /// <summary>接收行渲染画刷（冻结缓存）。</summary>
+    public SolidColorBrush RxBrush { get; private set; } = MakeBrush(DefaultRxColor, DefaultRxColor);
+
+    partial void OnTxColorHexChanged(string value)
+    {
+        TxBrush = MakeBrush(value, DefaultTxColor);
+        SaveUiSettings();
+    }
+
+    partial void OnRxColorHexChanged(string value)
+    {
+        RxBrush = MakeBrush(value, DefaultRxColor);
+        SaveUiSettings();
+    }
+
+    /// <summary>HEX → 冻结画刷；非法值回退到对应默认色（手改配置文件的兜底）。</summary>
+    private static SolidColorBrush MakeBrush(string hex, string fallback)
+    {
+        SolidColorBrush b;
+        try
+        {
+            b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        }
+        catch
+        {
+            b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(fallback));
+        }
+        b.Freeze();
+        return b;
+    }
+
+    /// <summary>HEX 字符串合法性（配置加载时校验）。</summary>
+    private static bool IsValidHex(string hex)
+    {
+        try
+        {
+            ColorConverter.ConvertFromString(hex);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>时序图是否跟随最新（持久化；取消后可自由缩放平移）。</summary>
     [ObservableProperty]
@@ -980,7 +1045,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // 可选参数默认值：旧配置缺字段时按此处理。
     // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需勾选，勾选状态仍记忆
-    private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true);
+    private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true,
+        string TxColor = "#0078D7", string RxColor = "#1E1E1E");
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -997,6 +1063,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ShowFramesPanel = s.ShowFramesPanel;
                     ShowWavePanel = s.ShowWavePanel;
                     WaveFollow = s.WaveFollow;
+                    // 颜色合法性校验：手改坏值按默认色启动
+                    if (s.TxColor is { } tc && IsValidHex(tc)) TxColorHex = tc;
+                    if (s.RxColor is { } rc && IsValidHex(rc)) RxColorHex = rc;
                 }
             }
         }
@@ -1012,7 +1081,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
             File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(
-                new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow),
+                new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
@@ -1051,7 +1120,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _txPrev = 1;
         }
         _waveStart = DateTime.Now;
-        RxRendered?.Invoke(this, new RxRender(RxRenderKind.Clear, string.Empty));
+        RxRendered?.Invoke(this, new RxRender(RxRenderKind.Clear, Array.Empty<RxSeg>()));
         WaveRendered?.Invoke(this, EventArgs.Empty);
         FieldPlotsRendered?.Invoke(this, EventArgs.Empty);
     }
@@ -1176,19 +1245,52 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        var sb = new System.Text.StringBuilder(newItems.Count * 32);
+        var segs = new SegBuilder();
         foreach (var item in newItems)
         {
             var line = FormatLine(item);
             if (_logger.IsActive)
                 _logger.WriteLine(line);
             if (PassFilter(item))
-                sb.Append(line).Append('\n');
+                segs.Add(line, item.IsTx);
         }
 
-        RxRendered?.Invoke(this, new RxRender(RxRenderKind.Append, sb.ToString()));
+        RxRendered?.Invoke(this, new RxRender(RxRenderKind.Append, segs.ToList()));
         WaveRendered?.Invoke(this, EventArgs.Empty);
         FieldPlotsRendered?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>同方向行合并器：FlushRx / BuildFullSegs 共用，连续同方向行并成一段减少视图着色次数。</summary>
+    private sealed class SegBuilder
+    {
+        private readonly List<RxSeg> _segs = new();
+        private System.Text.StringBuilder? _cur;
+        private bool _curTx;
+
+        public void Add(string line, bool isTx)
+        {
+            if (_cur is null || _curTx != isTx)
+            {
+                Flush();
+                _cur = new System.Text.StringBuilder(line.Length + 1);
+                _curTx = isTx;
+            }
+            _cur.Append(line).Append('\n');
+        }
+
+        /// <summary>收尾输出（当前段入列）。</summary>
+        public List<RxSeg> ToList()
+        {
+            Flush();
+            return _segs;
+        }
+
+        private void Flush()
+        {
+            if (_cur is null) return;
+            _segs.Add(new RxSeg(_cur.ToString(), _curTx));
+            _cur = null;
+        }
     }
 
     // ---------- 状态栏统计 ----------
@@ -1361,14 +1463,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return sb.ToString();
     }
 
-    /// <summary>全量文本（显示模式切换/过滤变化时全量重绘用；应用当前过滤）。</summary>
-    private string BuildFullText()
+    /// <summary>全量分段（显示模式/过滤/颜色切换全量重绘用；应用当前过滤）。</summary>
+    private IReadOnlyList<RxSeg> BuildFullSegs()
     {
-        var sb = new System.Text.StringBuilder(_lines.Count * 32);
+        var segs = new SegBuilder();
         foreach (var item in _lines)
             if (PassFilter(item))
-                sb.Append(FormatLine(item)).Append('\n');
-        return sb.ToString();
+                segs.Add(FormatLine(item), item.IsTx);
+        return segs.ToList();
     }
 
     private void OnBackendError(object? sender, string msg)
@@ -1410,9 +1512,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             case nameof(SelectedReply):
                 RemoveSelectedReplyCommand.NotifyCanExecuteChanged();
                 break;
-            case nameof(ShowHex) or nameof(ShowTimestamp) or nameof(RxFilterText) or nameof(FilterEnabled):
-                // 显示模式/过滤切换：全量重绘，视图恢复原滚动位置
-                RxRendered?.Invoke(this, new RxRender(RxRenderKind.Full, BuildFullText()));
+            case nameof(ShowHex) or nameof(ShowTimestamp) or nameof(RxFilterText) or nameof(FilterEnabled)
+                or nameof(TxColorHex) or nameof(RxColorHex):
+                // 显示模式/过滤/颜色切换：全量重绘，视图恢复原滚动位置
+                RxRendered?.Invoke(this, new RxRender(RxRenderKind.Full, BuildFullSegs()));
                 break;
             case nameof(LogEnabled):
                 if (LogEnabled)

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using SerialTool.App.ViewModels;
 namespace SerialTool.App;
@@ -23,6 +24,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // 清掉 RichTextBox 初始空 Paragraph，首行前不留空行
+        RxOutput.Document.Blocks.Clear();
         if (DataContext is MainViewModel vm)
         {
             vm.RxRendered += OnRxRendered;
@@ -179,7 +182,10 @@ public partial class MainWindow : Window
             Math.Min(Top, wa.Bottom - _chartWindow.Height));
     }
 
-    // ---------- 接收框渲染（事件驱动：追加保留滚动位置） ----------
+    // ---------- 接收框渲染（事件驱动：追加保留滚动位置；按方向逐行着色） ----------
+
+    // 已渲染字符计数（截断判据；自维护，避免每拍读 RxOutput.Text 全串）
+    private int _rxChars;
 
     /// <summary>跟随策略：勾选"跟随最新"且鼠标不在框上（悬停 = 暂停查看）。</summary>
     private bool FollowLatest()
@@ -190,20 +196,23 @@ public partial class MainWindow : Window
         switch (r.Kind)
         {
             case RxRenderKind.Clear:
-                RxOutput.Clear();
+                RxOutput.Document.Blocks.Clear();
+                _rxChars = 0;
                 break;
 
             case RxRenderKind.Append:
-                RxOutput.AppendText(r.Text);
+                AppendSegments(r.Segments);
                 TrimIfNeeded();
                 if (FollowLatest())
                     RxOutput.ScrollToEnd();
                 break;
 
             case RxRenderKind.Full:
-                // 显示模式切换全量重绘：恢复原滚动位置
+                // 显示模式/颜色切换全量重绘：恢复原滚动位置
                 var offset = RxOutput.VerticalOffset;
-                RxOutput.Text = r.Text;
+                RxOutput.Document.Blocks.Clear();
+                _rxChars = 0;
+                AppendSegments(r.Segments);
                 RxOutput.ScrollToVerticalOffset(offset);
                 if (FollowLatest())
                     RxOutput.ScrollToEnd();
@@ -211,11 +220,42 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>超长截断：丢弃前半部分，保留最新内容。</summary>
+    /// <summary>按方向分段追加并着色：一行一个 Paragraph（整行含时间戳/箭头同色），
+    /// 直接建 Paragraph/Run 对象树（不走 TextRange，避开空区间着色无效等坑）。</summary>
+    private void AppendSegments(IReadOnlyList<RxSeg> segs)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        var doc = RxOutput.Document;
+        foreach (var seg in segs)
+        {
+            var brush = seg.IsTx ? vm.TxBrush : vm.RxBrush;
+            var text = seg.Text;
+            if (text.Length == 0) continue;
+            var start = 0;
+            for (var i = 0; i <= text.Length; i++)
+            {
+                if (i != text.Length && text[i] != '\n') continue;
+                if (i > start)
+                    doc.Blocks.Add(new Paragraph(new Run(text[start..i])) { Foreground = brush });
+                start = i + 1;
+            }
+            _rxChars += text.Length;
+        }
+    }
+
+    /// <summary>超长截断：整段（Paragraph = 行）从头部移除，保留最新内容与着色。
+    /// 长度用 TextRange 取段落文本实测（TextPointer 偏移计的是符号数，≠ 字符数，禁用）。</summary>
     private void TrimIfNeeded()
     {
-        if (RxOutput.Text.Length <= RxTrimThreshold) return;
-        RxOutput.Text = RxOutput.Text[^RxTrimKeep..];
+        if (_rxChars <= RxTrimThreshold) return;
+        var blocks = RxOutput.Document.Blocks;
+        var removed = 0;
+        while (_rxChars - removed > RxTrimKeep && blocks.Count > 1 && blocks.FirstBlock is Paragraph p)
+        {
+            removed += new TextRange(p.ContentStart, p.ContentEnd).Text.Length;
+            blocks.Remove(p);
+        }
+        _rxChars -= removed;
     }
 
     /// <summary>悬停暂停结束：跟随模式下立即补齐到最新。</summary>

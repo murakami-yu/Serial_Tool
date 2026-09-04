@@ -13,7 +13,7 @@
 | ---- | ------ | -------- | ---- |
 | 1 | 串口扫描与识别 | 枚举 COM 口并显示设备名（WMI 查 PnP 实体，如 "COM3 · USB-SERIAL CH340"）、手动刷新（后台线程防卡 UI）、占用状态提示、热插拔自动提示 | V1.0 ✅（热插拔 V1.3） |
 | 2 | 串口参数配置 | 波特率（9600–921600 预设）、数据位（7/8）、停止位（1/1.5/2）、校验位（无/偶/奇）、流控（无/RTS-CTS，V1.3 补） | V1 |
-| 3 | 数据接收 | HEX/文本双模式；文本模式智能解码（UTF-8 优先，GBK 回退——中文设备数据直接显示汉字）、时间戳开关、跟随/悬停滚动控制、大缓冲环形截断、一键清空 | V1 ✅ |
+| 3 | 数据接收 | HEX/文本双模式；文本模式智能解码（UTF-8 优先，GBK 回退——中文设备数据直接显示汉字）、时间戳开关、跟随/悬停滚动控制、大缓冲环形截断、一键清空、**TX/RX 行颜色自定义**（接收区标题栏色块入口，16 色调色板 + 恢复默认；默认发送蓝/接收深灰；整行按方向着色；持久化） | V1 ✅（颜色 V1.2.x） |
 | 4 | 数据发送 | HEX/ASCII 双模式、Enter 快捷发送；多帧发送（右侧面板）：帧列表编辑/增删、**每帧备注注释**、任意帧手动发送、每帧独立周期循环发送（最小 50ms）、JSON 持久化（Config/send_frames.json，含备注） | V1.0 ✅（发送历史 V1.3） |
 | 5 | 会话日志 | 收发数据持续写入 txt（AutoFlush 防异常丢失）、自定义保存位置、一键定位文件 | V1.0 ✅（回放预留） |
 | 6 | 协议帧解析 | **字段链模板**（帧头 → 命令/固定/长度/数据字段任意组合 → 校验 → 帧尾）：长度域可在帧中任意位置（Modbus 写帧 byteCount）、校验字节序可配（CRCh CRCl 高前 / Modbus 标准低前）、无长度域协议支持帧尾扫描定界（EM 协议）、**多模板并行仲裁**（同总线混合协议/读写结构并存，按优先级+校验裁决）；粘包/半包/假帧头/坏帧重同步；JSON 模板（v1 自动迁移）+ 编辑器；帧行显示来源模板名 | V1.1 ✅（彩色高亮随 V1.2 视图升级） |
@@ -97,6 +97,7 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 | V1.2 | 波形面板（ScottPlot.WPF 时序图：帧/块散点时间线 + 跟随/缩放平移） | `MainWindow` 波形面板 | ✅ 完成（2026-09-01：构建零错误、单测 48/48、冒烟通过） |
 | V1.2.x | 功能增强四件套 + 布局独立性：状态栏速率/时长统计 + 接收过滤（视图层）；RTS/DTR 控制 + CTS/DSR 指示灯；帧字段实时曲线（图表第二页）；自动应答器（右列第二页）；工具条 WrapPanel 化 + 左列比例行/Splitter/ClipToBounds 各框独立 + 等宽输入 28px 基线统一 | `Core/RxFilter.cs`、`Core/Framing/{FieldPlot,AutoReply}.cs`、`ViewModels/{FieldPlotViewModel,AutoReplyViewModel}.cs` | ✅ 完成（2026-09-01：92/92 单测、启动冒烟；[执行计划](功能增强执行计划.md)） |
 | V1.2.x | 图表面板迁独立窗口：时序图 / 字段曲线从主窗左列迁出为 `ChartWindow`（「波形」复选框显隐、X=取消勾选、位置与缩放状态保留、隐藏期渲染暂停重开补帧）；主窗左列简化为接收区单框架 | `ChartWindow.xaml(.cs)`（MainWindow 图表代码整体迁入） | ✅ 完成（2026-09-02：构建零错误、92/92 单测、启动冒烟；修复 XAML 初始化期设 Owner 崩溃） |
+| V1.2.x | 接收区 TX/RX 行颜色自定义：接收框由 `TextBox` 换 `RichTextBox`（TextBox 无 Document/TextPointer API，不支持逐行着色——原已知局限随之解除），渲染管线改分段载荷 `RxSeg(Text, IsTx)` 按方向着 Paragraph；接收区标题栏右侧「发送色/接收色」色块按钮 + 16 色调色板弹层 + 恢复默认（自绘 `ColorChipButton`，无新依赖）；默认发送 #0078D7 / 接收 #1E1E1E，配置存 ui_settings.json；换色即全量重绘；截断改段落粒度删除保色 | `Controls/ColorChipButton.xaml(.cs)`、`Converters.cs`（HexToBrush）、MainWindow / MainViewModel 渲染管线 | ✅ 完成（2026-09-05：构建零错误、92/92 单测；TCP 回环实测双色/换色重绘/恢复默认/持久化/旧配置回退/>800K 截断保色） |
 | V1.2.x | 图表窗默认关闭（用户按需勾选，勾选状态仍记忆）+ 最小尺寸实测标定（`SizeToContent` 逐页量出完整显示尺寸写回 Min，画布可读性地板 200px，随 DPI/字号自适应，SetWindowPos 强缩实测被钳制在 744×485） | VM `UiSettings` 默认值、`ChartWindow.CalibrateMinSize` | ✅ 完成（2026-09-03：92/92 单测、启动验证不弹窗、EnumWindows/钳制实测） |
 | V1.3 | 发送历史、热插拔（WM_DEVICECHANGE）、多端口标签、流控（RTS-CTS） | — | 规划 |
 | V2 | I2C 后端（FTDI.FTD2XX_NET）、扫描/寄存器读写、L2 序列图 | `Backends/I2cBackend.cs` | 规划 |

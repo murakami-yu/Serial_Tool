@@ -8,6 +8,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <app:BoolToIndexConverter x:Key="BoolToIndex"/>
         <app:BoolToDotConverter x:Key="BoolToDot"/>
+        <app:HexToBrushConverter x:Key="HexToBrush"/>
         <SolidColorBrush x:Key="BgBrush" Color="#F4F4F4"/>
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="BorderBrush" Color="#C9C9C9"/>
@@ -447,6 +448,49 @@
         <Style x:Key="Mono" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Courier New"/>
             <Setter Property="Padding" Value="6,2"/>
+        </Style>
+
+        <!-- 接收区富文本框：只读 + 逐行着色（TX/RX 方向色）；模板与输入框同构（圆角边框 + 悬停/聚焦蓝边）。
+             IsUndoEnabled=False 防程序化追加撑大撤销栈（RichTextBox 无 TextBox 的 Ctrl 滚轮缩放，无需禁） -->
+        <Style x:Key="MonoRich" TargetType="RichTextBox">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource TextBrush}"/>
+            <Setter Property="SelectionBrush" Value="#B3D4F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="IsUndoEnabled" Value="False"/>
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Courier New"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RichTextBox">
+                        <Border x:Name="Bd" CornerRadius="4"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
+                                          Focusable="False"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="1.5"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Application.Resources>
 </Application>
