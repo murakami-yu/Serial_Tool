@@ -18,7 +18,7 @@
     <Grid x:Name="RootGrid" Margin="12">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="LeftColumnDef" Width="*" MinWidth="420"/>
-            <ColumnDefinition x:Name="SplitterColumnDef" Width="8"/>
+            <ColumnDefinition x:Name="SplitterColumnDef" Width="12"/>
             <ColumnDefinition x:Name="RightColumnDef" Width="500" MinWidth="500"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
@@ -291,7 +291,7 @@
         </Grid>
 
         <!-- ===== 分隔条：拖动调整右栏宽度（平时隐形，悬停显示手柄） ===== -->
-        <GridSplitter x:Name="FramesSplitter" Grid.Row="1" Grid.Column="1" Width="8"
+        <GridSplitter x:Name="FramesSplitter" Grid.Row="1" Grid.Column="1" Width="12"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                       ResizeDirection="Columns" Focusable="False"
                       Cursor="SizeWE"/>
@@ -299,7 +299,7 @@
         <!-- ===== 右列工具面板（与接收区同高；可通过状态栏开关隐藏）：多帧发送 / 自动应答。裁切保证不越界覆盖 ===== -->
         <GroupBox x:Name="FramesPanel" Grid.Row="1" Grid.Column="2" ClipToBounds="True"
                   Header="发送工具（多帧发送 / 自动应答）"
-                  BorderBrush="{StaticResource BorderBrush}" Margin="10,10,0,0">
+                  BorderBrush="{StaticResource BorderBrush}" Margin="0,10,0,0">
             <TabControl Margin="4" Background="Transparent">
                 <!-- 第一页：多帧发送 -->
                 <TabItem Header="多帧发送（循环最小 50ms）">
@@ -532,5 +532,23 @@
                            Foreground="{StaticResource MutedBrush}"/>
             </DockPanel>
         </Border>
+
+        <!-- 拖动预览层（RootGrid 最后声明 = 置顶）：#F0F0F0 60% 半透明预览带（按钮/下拉框体同款灰，
+             透出下方面板）覆盖落点后右面板将占的区域 + #ADADAD 竖线 + 按钮灰底灰边宽度标签。
+             拖动中两面板完全静止
+             不重绘（本机虚拟显示驱动对连续失效的重内容子树带 ±1~2px 呈现偏移 = 跟手毛刺抖动），
+             只有本预览层跟手；松手一次落定 -->
+        <Grid x:Name="DragPreview" Grid.Row="1" Grid.ColumnSpan="3"
+              Visibility="Collapsed" IsHitTestVisible="False">
+            <Rectangle x:Name="PreviewBand" Fill="#F0F0F0" Opacity="0.6"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+            <Rectangle x:Name="PreviewLine" Width="2" Fill="#ADADAD"
+                       HorizontalAlignment="Left" VerticalAlignment="Stretch"/>
+            <Border x:Name="PreviewLabel" Background="#F0F0F0" BorderBrush="#ADADAD"
+                    BorderThickness="1" CornerRadius="4" Padding="6,2"
+                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                <TextBlock x:Name="PreviewLabelText" Foreground="{StaticResource TextBrush}" FontSize="12"/>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

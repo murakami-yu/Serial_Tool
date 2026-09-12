@@ -11,8 +11,8 @@ public partial class MainWindow : Window
     private const int RxTrimThreshold = 800_000; // 接收框字符数上限（超出截掉前半，防止无限增长）
     private const int RxTrimKeep = 400_000;
 
-    // 分隔条宽 8、左栏最小 420；右栏余量 2 给 GroupBox 边框留安全距离
-    private const double SplitterWidth = 8;
+    // 分隔条带宽 12（= 发送区/串口配置框间隔，2026-09-12 统一）、左栏最小 420；右栏余量 2 给 GroupBox 边框留安全距离
+    private const double SplitterWidth = 12;
     private const double LeftColumnMinWidth = 420;
     private const double FramesColumnSafety = 2;
     // 下限 = 整表最小需求：固定列 246 + 内容/备注最小宽 200 + 面板内边距 24 + 余量。
@@ -49,16 +49,90 @@ public partial class MainWindow : Window
             ApplyWavePanelState();
         }), System.Windows.Threading.DispatcherPriority.Loaded);
 
-        // 拖动分隔条过程中持续钳制右栏宽度：本机 DPI 环境异常时（150% 缩放 + 虚拟显示驱动），
-        // 拖动增量会被放大数百倍，GridSplitter 会写出远超窗口的列宽，必须当场掐掉
-        FramesSplitter.DragDelta += (_, _) => ClampRightColumn();
-        FramesSplitter.DragCompleted += (_, _) =>
+        // 预览带式拖动：拖动中两面板列宽保持起始值完全静止（本机虚拟显示驱动对「连续失效的重内容
+        // 子树」带 ±1~2px 呈现偏移 = 跟手毛刺抖动；静止即零失效零抖动），仅预览层（竖线+半透明带+
+        // 宽度标签）跟手；松手一次应用落点宽度。分隔条每条鼠标消息仍会写它自己推算的列宽（本机 DPI
+        // 异常下增量放大数百倍、远超窗口），同消息内原样写回起始值覆盖之（渲染只见到最终值=不变）。
+        FramesSplitter.DragStarted += (_, _) =>
         {
-            ClampRightColumn();
-            if (FramesPanel.ActualWidth > 0)
-                _framesPanelWidth = FramesPanel.ActualWidth;
+            _dragStartMouseX = Mouse.GetPosition(this).X;
+            _dragStartLeftAct = LeftColumnDef.ActualWidth;
+            _dragStartLeftLen = LeftColumnDef.Width;
+            _dragStartRightLen = RightColumnDef.Width;
+            DragPreview.Visibility = Visibility.Visible;
+            UpdateDragPreview();
+        };
+        FramesSplitter.DragDelta += (_, _) =>
+        {
+            LeftColumnDef.Width = _dragStartLeftLen;
+            RightColumnDef.Width = _dragStartRightLen;
+            UpdateDragPreview();
+        };
+        FramesSplitter.DragCompleted += (_, e) =>
+        {
+            DragPreview.Visibility = Visibility.Collapsed;
+            if (e.Canceled)
+            {
+                LeftColumnDef.Width = _dragStartLeftLen;
+                RightColumnDef.Width = _dragStartRightLen;
+                return;
+            }
+            ApplyDragWidths(); // 松手一次应用：落点即所见
+            _framesPanelWidth = RightColumnDef.Width.Value;
         };
     }
+
+    /// <summary>预览层跟手：竖线在鼠标处（收进两列合法区间），半透明带覆盖「落点后右面板将占的区域」，
+    /// 标签显示落点右栏宽度。</summary>
+    private void UpdateDragPreview()
+    {
+        var rootW = RootGrid.ActualWidth;
+        var maxLeft = Math.Max(LeftColumnMinWidth, rootW - SplitterWidth - FramesPanelMinWidth);
+        var x = Math.Clamp(Mouse.GetPosition(RootGrid).X, LeftColumnMinWidth, maxLeft);
+        PreviewLine.Margin = new Thickness(x - 1, 0, 0, 0);
+        PreviewBand.Margin = new Thickness(x + SplitterWidth - 1, 0, 0, 0);
+        PreviewLabel.Margin = new Thickness(Math.Min(x + 12, rootW - 76), 0, 0, 0);
+        PreviewLabelText.Text = $"{rootW - SplitterWidth - x:F0} px";
+    }
+
+    /// <summary>按拖动起点 + 鼠标 DIP 位移推算两列宽度并写入（松手时调用；不信任 GridSplitter 自身增量）。
+    /// 宽度在设备像素空间取整（150% 下小数 DIP 落半设备像素、边缘发虚）；余数归左列，
+    /// 保证 左+分隔+右 恒等于根宽（右面板右缘始终贴齐窗口）。</summary>
+    private void ApplyDragWidths()
+    {
+        var s = DeviceScale();
+        var rootDev = Math.Round(RootGrid.ActualWidth * s);
+        var splitDev = Math.Round(SplitterWidth * s);
+        var minLeftDev = Math.Round(LeftColumnMinWidth * s);
+        var minRightDev = Math.Round(FramesPanelMinWidth * s);
+        var maxRightDev = Math.Round(MaxFramesWidth() * s);
+        var delta = Mouse.GetPosition(this).X - _dragStartMouseX;
+        var leftDev = Math.Round((_dragStartLeftAct + delta) * s);
+        leftDev = Math.Clamp(leftDev, rootDev - splitDev - maxRightDev, rootDev - splitDev - minRightDev);
+        leftDev = Math.Max(leftDev, minLeftDev);
+        var rightDev = rootDev - splitDev - leftDev;
+        LeftColumnDef.Width = new GridLength(leftDev / s);
+        RightColumnDef.Width = new GridLength(rightDev / s);
+    }
+
+    /// <summary>当前 DPI 缩放（150% 环境 = 1.5）。宽度取整用它把 DIP 折到设备像素空间。</summary>
+    private double DeviceScale()
+    {
+        var m = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11;
+        return m is > 0 ? m.Value : 1;
+    }
+
+    /// <summary>把列宽收整到设备像素（恢复记忆宽度 / 窗口缩放吸收差值时用）。</summary>
+    private double SnapWidth(double dip)
+    {
+        var s = DeviceScale();
+        return Math.Round(dip * s) / s;
+    }
+
+    private double _dragStartMouseX;
+    private double _dragStartLeftAct;
+    private GridLength _dragStartLeftLen;
+    private GridLength _dragStartRightLen;
 
     // ---------- 右栏宽度钳制 ----------
 
@@ -69,16 +143,43 @@ public partial class MainWindow : Window
            RootGrid.ActualWidth - SplitterWidth - LeftColumnMinWidth - FramesColumnSafety);
 
     /// <summary>把右栏定义宽度压回窗口可容纳范围。绝对值或 Star 值异常（拖动增量被 DPI 放大）都处理。</summary>
-    private void ClampRightColumn()
+    /// <summary>窗口尺寸变化时钳制右栏并把差值吸收进左列（右栏保持用户拖出的宽度）。
+    /// 根宽用 GetClientRect 现取（设备像素/DPI），不读 RootGrid.ActualWidth：拖动后两列为绝对值，
+    /// 其和会垫高 Grid 最小宽，窗口缩小时 arrange 被 MinWidth 顶回、RootGrid.ActualWidth 停在溢出值
+    /// （右列伸出窗口右缘被切的老问题根因，HEAD 同机制）；客户区矩形不受该溢出影响。
+    /// 事件内一次写完、无中间态（本机 200~1700Hz 消息风暴下任何「先收后放」的中间态都会上屏闪烁）。</summary>
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var max = MaxFramesWidth();
-        if (RightColumnDef is not null && RightColumnDef.Width.Value > max)
-            RightColumnDef.Width = new GridLength(max);
+        var s = DeviceScale();
+        var rootT = RootTargetWidth();
+        var max = SnapWidth(Math.Max(FramesPanelMinWidth, rootT - SplitterWidth - LeftColumnMinWidth - FramesColumnSafety));
+        var right = Math.Min(RightColumnDef.Width.Value, max);
+        if (LeftColumnDef.Width.IsAbsolute)
+        {
+            var rightDev = Math.Round(right * s);
+            var leftDev = Math.Max(Math.Round(LeftColumnMinWidth * s),
+                Math.Round(rootT * s) - Math.Round(SplitterWidth * s) - rightDev);
+            LeftColumnDef.Width = new GridLength(leftDev / s);
+            right = rightDev / s;
+        }
+        RightColumnDef.Width = new GridLength(right);
     }
 
-    /// <summary>窗口尺寸变化时钳制右栏，防止绝对宽度超出可用空间。</summary>
-    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
-        => ClampRightColumn();
+    /// <summary>根 Grid 的目标宽度（DIP）：客户区设备宽 / DPI - 左右 Margin 12×2。</summary>
+    private double RootTargetWidth()
+    {
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero && GetClientRect(hwnd, out var r))
+            return r.Right / DeviceScale() - 24;
+        return RootGrid.ActualWidth;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct CLIENTRECT { public int Left, Top, Right, Bottom; }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetClientRect(IntPtr hwnd, out CLIENTRECT rect);
+
 
     /// <summary>把宽度值收拢到窗口可容纳范围（显示面板/记忆宽度时使用）。</summary>
     private double ClampFramesWidth(double width)
@@ -100,7 +201,7 @@ public partial class MainWindow : Window
         if (show)
         {
             RightColumnDef.MinWidth = FramesPanelMinWidth;
-            RightColumnDef.Width = new GridLength(ClampFramesWidth(_framesPanelWidth));
+            RightColumnDef.Width = new GridLength(SnapWidth(ClampFramesWidth(_framesPanelWidth)));
         }
         else
         {
