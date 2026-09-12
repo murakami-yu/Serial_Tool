@@ -137,10 +137,11 @@
                                           IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
                             <Popup IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"
                                    Placement="Bottom" Focusable="False" PopupAnimation="Slide">
-                                <!-- 顶部仅 1px 衔接缝，与输入框边框无缝相接（大间隙会被看成"缺口"）；底角圆角收边 -->
-                                <Border CornerRadius="1,1,4,4" Background="{StaticResource PanelBrush}"
-                                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1,0,1,1"
-                                        Margin="0,1,0,0" MinWidth="{TemplateBinding ActualWidth}"
+                                <!-- 悬浮圆角面板：四角统一 CornerRadius 4（向上/向下翻转都好看），
+                                     2px 悬浮间隙 + 2px 内衬，避免高亮条直角顶到圆角边框 -->
+                                <Border CornerRadius="4" Background="{StaticResource PanelBrush}"
+                                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                                        Margin="0,2,0,2" Padding="2" MinWidth="{TemplateBinding ActualWidth}"
                                         SnapsToDevicePixels="True">
                                     <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}" SnapsToDevicePixels="True">
                                         <StackPanel IsItemsHost="True"
@@ -150,6 +151,11 @@
                             </Popup>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <!-- 键入焦点：与输入框/下拉展开同款的蓝色加粗描边 -->
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="1.5"/>
+                            </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                             </Trigger>
@@ -166,17 +172,29 @@
             </Setter>
         </Style>
 
+        <!-- 下拉项：圆角高亮块（默认模板是直角矩形，与圆角弹层不搭） -->
         <Style TargetType="ComboBoxItem">
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            <Style.Triggers>
-                <Trigger Property="IsHighlighted" Value="True">
-                    <Setter Property="Background" Value="#CCE4F7"/>
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#B3D4F0"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd" CornerRadius="4" Background="Transparent"
+                                Padding="{TemplateBinding Padding}" Margin="1,1"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#CCE4F7"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#B3D4F0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- 勾选框：圆角方框 + 蓝底白勾，整体 28px 基线居中 -->

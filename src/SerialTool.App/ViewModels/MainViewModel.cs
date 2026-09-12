@@ -108,8 +108,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsSerial => ConnTypeIndex == 0;
     public bool IsTcp => ConnTypeIndex != 0;
 
+    /// <summary>生效波特率文本（预设或自定义值，持久化到 Config/ui_settings.json）；
+    /// 主框不直接键入，自定义经下拉「自定义…」对话框。</summary>
     [ObservableProperty]
-    private int _selectedBaud = 115200;
+    private string _baudText = "115200";
+
+    /// <summary>下拉当前选中项；选中即回写 BaudText 保证回显与持久化。
+    /// 选中「自定义…」时弹对话框，按结果插入列表选中或回退原选择。</summary>
+    [ObservableProperty]
+    private string? _selectedBaudItem;
+
+    /// <summary>解析波特率输入：合法正整数返回值；非法返回 0（连接时报错，波形按标称位宽兜底）。</summary>
+    public int SelectedBaud =>
+        int.TryParse(BaudText.Trim(), out var b) && b > 0 ? b : 0;
 
     [ObservableProperty]
     private int _selectedDataBits = 8;
@@ -298,8 +309,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>字段曲线刷新事件：视图订阅后拉取快照（FlushRx / 清空 / 配置变更触发）。</summary>
     public event EventHandler? FieldPlotsRendered;
 
-    public IReadOnlyList<int> BaudRates { get; } = new[]
-        { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
+    /// <summary>波特率下拉末尾的「自定义…」选项：选中弹输入对话框（主框不自由输入）。</summary>
+    private const string CustomBaudLabel = "自定义…";
+
+    /// <summary>波特率下拉项：常用预设 + 已持久化的自定义值 + 末尾「自定义…」。项为字符串保证回显。</summary>
+    public ObservableCollection<string> BaudRates { get; } = new()
+    {
+        "300", "600", "1200", "2400", "4800", "9600", "14400", "19200", "28800", "38400",
+        "57600", "115200", "128000", "230400", "256000", "460800", "500000", "576000",
+        "750000", "921600", "1000000", "1500000", "2000000",
+        CustomBaudLabel,
+    };
 
     public IReadOnlyList<int> DataBitsOptions { get; } = new[] { 8, 7 };
     public IReadOnlyList<string> StopBitsOptions { get; } = new[] { "1", "1.5", "2" };
@@ -360,6 +380,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch { /* 目录创建失败时打开按钮会提示 */ }
 
         LoadUiSettings();
+        SyncBaudSelection();
         LoadTemplates();
         _ = LoadPortsAsync();
         LoadFrames();
@@ -574,12 +595,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (IsSerial)
             {
+                var baud = SelectedBaud;
+                if (baud <= 0)
+                {
+                    StatusText = "波特率非法：请输入正整数（如 115200），或从下拉列表选择";
+                    return;
+                }
                 _serialBackend.Open(new SerialPortConfig(
-                    SelectedDevice!.Id, SelectedBaud, SelectedDataBits,
+                    SelectedDevice!.Id, baud, SelectedDataBits,
                     (SerialParity)SelectedParityIndex,
                     (SerialStopBits)SelectedStopBitsIndex));
                 _active = _serialBackend;
-                StatusText = $"已打开 {SelectedDevice.Id} @ {SelectedBaud}";
+                StatusText = $"已打开 {SelectedDevice.Id} @ {baud}";
             }
             else
             {
@@ -1046,7 +1073,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // 可选参数默认值：旧配置缺字段时按此处理。
     // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需勾选，勾选状态仍记忆
     private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true,
-        string TxColor = "#0078D7", string RxColor = "#1E1E1E");
+        string TxColor = "#0078D7", string RxColor = "#1E1E1E", string Baud = "115200");
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -1066,6 +1093,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     // 颜色合法性校验：手改坏值按默认色启动
                     if (s.TxColor is { } tc && IsValidHex(tc)) TxColorHex = tc;
                     if (s.RxColor is { } rc && IsValidHex(rc)) RxColorHex = rc;
+                    // 波特率（含自定义值）：坏值按默认 115200 启动
+                    if (s.Baud is { } bd && int.TryParse(bd.Trim(), out var bv) && bv > 0) BaudText = bd.Trim();
                 }
             }
         }
@@ -1081,7 +1110,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
             File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(
-                new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex),
+                new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex, BaudText),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
@@ -1095,6 +1124,61 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnShowWavePanelChanged(bool value) => SaveUiSettings();
 
     partial void OnWaveFollowChanged(bool value) => SaveUiSettings();
+
+    partial void OnBaudTextChanged(string value) => SaveUiSettings();
+
+    partial void OnSelectedBaudItemChanged(string? value)
+    {
+        if (value is null) return;
+        if (value == CustomBaudLabel)
+        {
+            // 延迟到本次选择提交完全结束后再弹框：同步弹框（模态嵌套消息循环）会让
+            // ComboBox 未走完的提交流程在关框后把选中项回写成「自定义…」，冲掉自定义值
+            Application.Current?.Dispatcher.BeginInvoke(new Action(HandleCustomBaud));
+            return;
+        }
+        if (value != BaudText) BaudText = value;
+    }
+
+    /// <summary>「自定义…」选项：弹输入对话框。确定 → 值插入下拉（「自定义…」之前）并选中；
+    /// 取消 → 回退原选择（对话框嵌套在选择变更回调里，关闭后下拉已收起）。</summary>
+    private void HandleCustomBaud()
+    {
+        var prev = BaudRates.Contains(BaudText) ? BaudText : null;
+        var win = new CustomBaudWindow(SelectedBaud > 0 ? BaudText : "115200")
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+        if (win.ShowDialog() == true)
+        {
+            EnsureCustomItem(win.Value);
+            BaudText = win.Value;
+            SelectedBaudItem = win.Value;
+        }
+        else
+        {
+            if (prev is null && SelectedBaud > 0)
+            {
+                EnsureCustomItem(BaudText);
+                prev = BaudText;
+            }
+            SelectedBaudItem = prev;
+        }
+    }
+
+    /// <summary>自定义值插入「自定义…」之前（已存在则不动）。</summary>
+    private void EnsureCustomItem(string v)
+    {
+        if (!BaudRates.Contains(v)) BaudRates.Insert(BaudRates.Count - 1, v);
+    }
+
+    /// <summary>启动时把选中项对齐到持久化的 BaudText：自定义值先插列表再选中。</summary>
+    private void SyncBaudSelection()
+    {
+        if (SelectedBaud <= 0) return;
+        EnsureCustomItem(BaudText);
+        if (SelectedBaudItem != BaudText) SelectedBaudItem = BaudText;
+    }
 
     [RelayCommand]
     private void ClearRx()

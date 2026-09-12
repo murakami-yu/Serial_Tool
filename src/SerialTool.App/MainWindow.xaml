@@ -268,8 +268,11 @@
                     <WrapPanel Margin="0,8,0,0"
                                Visibility="{Binding IsSerial, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="波特率" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <!-- 自定义波特率走下拉末尾「自定义…」选项（输入对话框）；主框不直接键入 -->
                         <ComboBox ItemsSource="{Binding BaudRates}"
-                                  SelectedItem="{Binding SelectedBaud}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                  SelectedItem="{Binding SelectedBaudItem, Mode=TwoWay}"
+                                  ToolTip="选择常用波特率；末尾「自定义…」可输入任意值"
+                                  MinWidth="88" Margin="6,0,0,0" VerticalAlignment="Center"/>
                         <TextBlock Text="数据位" VerticalAlignment="Center" Margin="14,0,0,0"
                                    Foreground="{StaticResource MutedBrush}"/>
                         <ComboBox ItemsSource="{Binding DataBitsOptions}"
