@@ -8,6 +8,7 @@ dotnet publish src/SerialTool.App `
   -c Release -r win-x64 --self-contained `
   -p:PublishSingleFile=true `
   -p:EnableCompressionInSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
   -o dist
 
 Write-Host "`n发布完成 → dist/"
