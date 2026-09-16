@@ -236,6 +236,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _txHexMode = true;
 
+    /// <summary>主发送区定时发送开关（持久化；勾选后按 TxPeriodMs 周期自动重发输入框内容）。</summary>
+    [ObservableProperty]
+    private bool _txCyclic;
+
+    /// <summary>主发送区定时发送周期 ms（持久化；实际周期不小于循环调度粒度 50ms）。</summary>
+    [ObservableProperty]
+    private int _txPeriodMs = 1000;
+
+    /// <summary>主发送区下一次定时发送到期时刻（仅 UI 线程；勾选后先立即发一帧再按周期排程）。</summary>
+    private DateTime _txNextDue;
+
     [ObservableProperty]
     private bool _showHex = true;
 
@@ -648,23 +659,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
                ? SelectedDevice is not null
                : !string.IsNullOrWhiteSpace(TcpHost) && TcpPort is > 0 and <= 65535);
 
+    /// <summary>手动发送（「发送」按钮 / 输入框 Enter）。</summary>
     [RelayCommand(CanExecute = nameof(CanSend))]
-    private void Send()
+    private void Send() => SendMain(silent: false);
+
+    /// <summary>主发送区实际发送：HEX 解析失败或内容为空返回 false（定时调度据此跳过本轮）。</summary>
+    private bool SendMain(bool silent)
     {
         var text = TxInput;
         if (TxHexMode)
         {
             if (!Hex.TryParse(text, out var bytes))
             {
-                StatusText = "HEX 格式错误：需要偶数个合法十六进制字符";
-                return;
+                if (!silent) StatusText = "HEX 格式错误：需要偶数个合法十六进制字符";
+                return false;
             }
-            WriteBytes(bytes);
+            if (bytes.Length == 0) return false;
+            WriteBytes(bytes, silent: silent);
         }
         else
         {
-            WriteBytes(Encoding.UTF8.GetBytes(text));
+            var bytes = Encoding.UTF8.GetBytes(text);
+            if (bytes.Length == 0) return false;
+            WriteBytes(bytes, silent: silent);
         }
+        return true;
     }
 
     private bool CanSend() => IsPortOpen && !string.IsNullOrWhiteSpace(TxInput);
@@ -719,11 +738,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>循环调度：周期到点的帧发送。实际周期不小于调度粒度。</summary>
+    /// <summary>循环调度：周期到点的帧发送。实际周期不小于调度粒度。
+    /// 主发送区「定时发送」复用本节拍（勾选时已立即发过首帧，这里按周期续发）。</summary>
     private void CyclicTick(object? sender, EventArgs e)
     {
         if (!IsPortOpen) return;
         var now = DateTime.Now;
+
+        // 主发送区定时发送：内容为空/HEX 非法时跳过本轮，下周期重试（不打断节奏、不刷状态栏）
+        if (TxCyclic && now >= _txNextDue)
+        {
+            _txNextDue = now.AddMilliseconds(Math.Max(TxPeriodMs, CyclicTickMs));
+            SendMain(silent: true);
+        }
+
         foreach (var f in SendFrames)
         {
             if (!f.IsCyclic) continue;
@@ -1073,7 +1101,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // 可选参数默认值：旧配置缺字段时按此处理。
     // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需勾选，勾选状态仍记忆
     private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true,
-        string TxColor = "#0078D7", string RxColor = "#1E1E1E", string Baud = "115200");
+        string TxColor = "#0078D7", string RxColor = "#1E1E1E", string Baud = "115200",
+        bool TxCyclic = false, int TxPeriodMs = 1000);
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -1095,6 +1124,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (s.RxColor is { } rc && IsValidHex(rc)) RxColorHex = rc;
                     // 波特率（含自定义值）：坏值按默认 115200 启动
                     if (s.Baud is { } bd && int.TryParse(bd.Trim(), out var bv) && bv > 0) BaudText = bd.Trim();
+                    // 主发送区定时发送：周期坏值按默认 1000ms 启动
+                    TxCyclic = s.TxCyclic;
+                    if (s.TxPeriodMs > 0) TxPeriodMs = s.TxPeriodMs;
                 }
             }
         }
@@ -1110,7 +1142,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
             File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(
-                new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex, BaudText),
+                new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex, BaudText,
+                    TxCyclic, TxPeriodMs),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
@@ -1120,6 +1153,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     partial void OnShowFramesPanelChanged(bool value) => SaveUiSettings();
+
+    /// <summary>勾选即按当前输入立即发首帧（连接未开/HEX 非法时提示并保留勾选，下周期自动重试）；
+    /// 取消即停。开关与周期均持久化。</summary>
+    partial void OnTxCyclicChanged(bool value)
+    {
+        if (value)
+        {
+            _txNextDue = DateTime.Now.AddMilliseconds(Math.Max(TxPeriodMs, CyclicTickMs));
+            if (!IsPortOpen)
+                StatusText = "定时发送已开启：连接未打开，将在连接后按周期发送";
+            else if (!SendMain(silent: false))
+                StatusText = "定时发送已开启：当前内容为空或 HEX 非法，修正后下周期自动发送";
+        }
+        SaveUiSettings();
+    }
+
+    partial void OnTxPeriodMsChanged(int value) => SaveUiSettings();
 
     partial void OnShowWavePanelChanged(bool value) => SaveUiSettings();
 
@@ -1179,6 +1229,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         EnsureCustomItem(BaudText);
         if (SelectedBaudItem != BaudText) SelectedBaudItem = BaudText;
     }
+
+    /// <summary>清空发送输入框（「发送区」清空按钮）。</summary>
+    [RelayCommand]
+    private void ClearTx() => TxInput = string.Empty;
 
     [RelayCommand]
     private void ClearRx()

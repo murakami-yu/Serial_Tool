@@ -111,6 +111,8 @@
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
             <Setter Property="MinWidth" Value="90"/>
             <Setter Property="MinHeight" Value="28"/>
+            <!-- 下拉列表高度封顶（约 10 行）：底部条贴近屏幕下缘时弹层不再伸出去被裁，改出滚动条 -->
+            <Setter Property="MaxDropDownHeight" Value="340"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
@@ -387,6 +389,29 @@
                         <Border Background="Transparent">
                             <Border x:Name="Handle" CornerRadius="2" Width="4"
                                     HorizontalAlignment="Center" Margin="0,10"
+                                    Background="Transparent"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Handle" Property="Background" Value="#B8B8B8"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Handle" Property="Background" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 横向分隔条：手柄横置（默认模板的 4px 竖手柄不适用于行分割） -->
+        <Style x:Key="RowGridSplitter" TargetType="GridSplitter" BasedOn="{StaticResource {x:Type GridSplitter}}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="Transparent">
+                            <Border x:Name="Handle" CornerRadius="2" Height="4"
+                                    VerticalAlignment="Center" Margin="10,0"
                                     Background="Transparent"/>
                         </Border>
                         <ControlTemplate.Triggers>
