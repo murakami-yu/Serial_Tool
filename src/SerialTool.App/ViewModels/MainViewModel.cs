@@ -765,19 +765,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>主机指纹确认弹窗请求（同步：连接挂起等待回写 Accepted）。MainWindow 订阅弹窗。</summary>
     public event EventHandler<SshHostKeyChallenge>? HostKeyChallenge;
 
-    /// <summary>SSH 主机指纹校验（TOFU）：已信任直通；首次/变更弹窗裁决，接受即写 known_hosts。</summary>
-    private void OnSshHostKeyVerifying(object? sender, SshHostKeyChallenge e)
+    /// <summary>SSH 主机指纹校验（TOFU）：已信任直通；首次/变更弹窗裁决，接受即写 known_hosts。
+    /// 主连接与终端窗多会话共用同一入口。</summary>
+    private void OnSshHostKeyVerifying(object? sender, SshHostKeyChallenge e) => VerifyHostKey(e);
+
+    /// <summary>同步校验并弹窗（UI 线程调用）：返回是否信任。</summary>
+    public bool VerifyHostKey(SshHostKeyChallenge e)
     {
         var result = _knownHosts.Verify(e.Host, e.Port, e.Algorithm, e.FingerprintSha256);
         if (result == KnownHostResult.Trusted)
         {
             e.Accepted = true;
-            return;
+            return true;
         }
         e.Changed = result == KnownHostResult.Changed;
         HostKeyChallenge?.Invoke(this, e);
         if (e.Accepted)
             _knownHosts.Trust(e.Host, e.Port, e.Algorithm, e.FingerprintSha256);
+        return e.Accepted;
     }
 
     /// <summary>终端网格尺寸变化（TerminalView.Resized）→ SSH 通道窗口变更；记录最近尺寸供下次连接初始 PTY。</summary>

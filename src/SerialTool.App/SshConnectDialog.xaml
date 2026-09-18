@@ -1,0 +1,78 @@
+<Window x:Class="SerialTool.App.SshConnectDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="新建 SSH 会话" SizeToContent="WidthAndHeight"
+        Background="{StaticResource BgBrush}" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="False">
+
+    <!-- 终端窗「+ SSH」入口：独立会话连接（与主面板连接互不影响）。
+         「保存到会话列表」勾选后按名称写入 Config/terminal_sessions.json（凭据不落盘） -->
+
+    <StackPanel Margin="16" Width="360">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="名称" VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedBrush}"/>
+            <TextBox x:Name="NameBox" Grid.Row="0" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
+                     ToolTip="保存到会话列表时使用的显示名（留空则用 user@host）"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="主机" VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedBrush}"/>
+            <DockPanel Grid.Row="1" Grid.Column="1" Margin="12,4,0,4">
+                <TextBox x:Name="PortBox" DockPanel.Dock="Right" Width="56" VerticalAlignment="Center"/>
+                <TextBlock DockPanel.Dock="Right" Text="端口" Margin="0,0,6,0" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedBrush}"/>
+                <TextBox x:Name="HostBox" VerticalAlignment="Center" MinWidth="150"/>
+            </DockPanel>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="用户名" VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedBrush}"/>
+            <TextBox x:Name="UserBox" Grid.Row="2" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"/>
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="认证" VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedBrush}"/>
+            <DockPanel Grid.Row="3" Grid.Column="1" Margin="12,4,0,4">
+                <ComboBox x:Name="AuthBox" DockPanel.Dock="Right" Width="76" VerticalAlignment="Center"
+                          SelectionChanged="AuthBox_SelectionChanged">
+                    <ComboBoxItem Content="密码" IsSelected="True"/>
+                    <ComboBoxItem Content="私钥"/>
+                </ComboBox>
+                <PasswordBox x:Name="PasswordBox" VerticalAlignment="Center" MinWidth="120"/>
+            </DockPanel>
+        </Grid>
+
+        <!-- 私钥明细（认证=私钥时显示） -->
+        <DockPanel x:Name="KeyPanel" Margin="0,6,0,0" Visibility="Collapsed">
+            <TextBlock Text="私钥" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <TextBlock Text="口令" VerticalAlignment="Center" Margin="10,0,0,0"
+                           Foreground="{StaticResource MutedBrush}"/>
+                <PasswordBox x:Name="KeyPassBox" Width="86" Margin="4,0,0,0" VerticalAlignment="Center"
+                             ToolTip="私钥口令（无口令可留空，不落盘）"/>
+            </StackPanel>
+            <Button DockPanel.Dock="Right" Content="浏览…" Margin="6,0,0,0" VerticalAlignment="Center"
+                    Click="BrowseKey_Click"/>
+            <TextBox x:Name="KeyBox" Margin="12,0,6,0" VerticalAlignment="Center" MinWidth="80"
+                     ToolTip="私钥文件路径（OpenSSH / PEM；PuTTY .ppk 需转换）"/>
+        </DockPanel>
+
+        <CheckBox x:Name="SaveBox" Content="保存到会话列表（不含密码/口令）" Margin="0,12,0,0"/>
+
+        <TextBlock x:Name="Err" Foreground="#C00000" Margin="0,8,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="连接" IsDefault="True" Click="OnConnect" Width="76"/>
+            <Button Content="取消" IsCancel="True" Margin="8,0,0,0" Width="70"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
