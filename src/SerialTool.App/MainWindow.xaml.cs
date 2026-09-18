@@ -32,7 +32,7 @@ public partial class MainWindow : Window
         }
         // 主窗 Closing 先于 owned 窗口的关闭流程：先把图表窗切到真实关闭模式，
         // 否则它的「X = 取消勾选」语义会取消关闭，导致主窗关了进程却不退
-        Closing += (_, _) => _chartWindow?.CloseForReal();
+        Closing += (_, _) => { _chartWindow?.CloseForReal(); _terminalWindow?.CloseForReal(); };
         Closed += (_, _) =>
         {
             if (DataContext is MainViewModel vm)
@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         {
             ApplyFramesPanelState();
             ApplyWavePanelState();
+            ApplyTerminalPanelState();
         }), System.Windows.Threading.DispatcherPriority.Loaded);
 
         // 预览带式拖动：拖动中两面板列宽保持起始值完全静止（本机虚拟显示驱动对「连续失效的重内容
@@ -281,6 +282,68 @@ public partial class MainWindow : Window
             Math.Min(Left + ActualWidth + 8, wa.Right - _chartWindow.Width));
         _chartWindow.Top = Math.Max(wa.Top,
             Math.Min(Top, wa.Bottom - _chartWindow.Height));
+    }
+
+    // ---------- 终端窗口（VT100/xterm 终端仿真，独立窗口）显示/隐藏 ----------
+
+    // 与图表窗同一套销毁/重建模式（含 Closing 重入顺序）：勾选新建 owned 窗、取消勾选/X 销毁，
+    // 位置尺寸记在字段里重开还原
+    private TerminalWindow? _terminalWindow;
+    private Rect? _terminalBounds;
+
+    private void TerminalPanelToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        // XAML 初始化期（绑定套用记忆值触发 Checked）由 Loaded 时的初始应用兜底（与图表窗同套路）
+        if (!IsLoaded) return;
+        ApplyTerminalPanelState();
+    }
+
+    private void ApplyTerminalPanelState()
+    {
+        if (DataContext is not MainViewModel vm) return;
+        if (vm.ShowTerminalPanel)
+        {
+            if (_terminalWindow is null)
+            {
+                _terminalWindow = new TerminalWindow(vm) { Owner = this };
+                if (_terminalBounds is Rect b)
+                    RestoreTerminalBounds(b);
+                else
+                    PositionTerminalWindow(); // 首次打开：贴主窗右侧（图表窗右侧再错开，避免完全重叠）
+            }
+            _terminalWindow.Show();
+        }
+        else if (_terminalWindow is not null)
+        {
+            _terminalBounds = new Rect(_terminalWindow.Left, _terminalWindow.Top, _terminalWindow.Width, _terminalWindow.Height);
+            _terminalWindow.CloseForReal();
+            _terminalWindow = null;
+        }
+    }
+
+    /// <summary>按记忆的位置尺寸重开终端窗，收回工作区内。</summary>
+    private void RestoreTerminalBounds(Rect b)
+    {
+        if (_terminalWindow is null) return;
+        var wa = SystemParameters.WorkArea;
+        var w = Math.Max(_terminalWindow.MinWidth, Math.Min(b.Width, wa.Width));
+        var h = Math.Max(_terminalWindow.MinHeight, Math.Min(b.Height, wa.Height));
+        _terminalWindow.Width = w;
+        _terminalWindow.Height = h;
+        _terminalWindow.Left = Math.Max(wa.Left, Math.Min(b.X, wa.Right - w));
+        _terminalWindow.Top = Math.Max(wa.Top, Math.Min(b.Y, wa.Bottom - h));
+    }
+
+    /// <summary>终端窗初始位置：贴主窗右侧、顶边对齐（图表窗同时开着时向下错开一档）。</summary>
+    private void PositionTerminalWindow()
+    {
+        if (_terminalWindow is null) return;
+        var wa = SystemParameters.WorkArea;
+        var left = Left + ActualWidth + 8;
+        if (_chartWindow is not null)
+            left = Math.Max(left, _chartWindow.Left + 24);
+        _terminalWindow.Left = Math.Max(wa.Left, Math.Min(left, wa.Right - _terminalWindow.Width));
+        _terminalWindow.Top = Math.Max(wa.Top, Math.Min(Top, wa.Bottom - _terminalWindow.Height));
     }
 
     // ---------- 接收框渲染（事件驱动：追加保留滚动位置；按方向逐行着色） ----------

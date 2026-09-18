@@ -146,6 +146,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showWavePanel = true;
 
+    /// <summary>终端窗口是否显示（VT100/xterm 终端仿真视图，持久化；默认关闭）。</summary>
+    [ObservableProperty]
+    private bool _showTerminalPanel;
+
     // ---------- 接收区 TX/RX 行颜色（持久化；渲染用冻结画刷缓存） ----------
 
     public const string DefaultTxColor = "#0078D7"; // 主题强调蓝
@@ -688,6 +692,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private bool CanSend() => IsPortOpen && !string.IsNullOrWhiteSpace(TxInput);
 
+    /// <summary>终端输入原始字节发送：不回显进接收区行缓冲、不写会话日志
+    /// （终端视图已有对端回显，避免逐键刷接收区），仅计 TX 统计与 TX 波形（与主发送同链路）。</summary>
+    public void SendTerminalBytes(byte[] bytes)
+    {
+        if (bytes.Length == 0 || _active is null) return;
+        try
+        {
+            _active.Write(bytes);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"发送失败: {ex.Message}";
+            return;
+        }
+        AppendWave(_txWave, bytes, DateTime.Now, ref _txPrev);
+        TxCount += bytes.Length;
+    }
+
     /// <summary>写入当前活动连接并回显；silent=true 时不刷状态栏（循环发送/自动应答防噪音）。</summary>
     private void WriteBytes(byte[] bytes, string? label = null, bool silent = false, string? tag = null)
     {
@@ -1102,7 +1124,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需勾选，勾选状态仍记忆
     private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true,
         string TxColor = "#0078D7", string RxColor = "#1E1E1E", string Baud = "115200",
-        bool TxCyclic = false, int TxPeriodMs = 1000);
+        bool TxCyclic = false, int TxPeriodMs = 1000, bool ShowTerminalPanel = false);
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -1118,6 +1140,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     ShowFramesPanel = s.ShowFramesPanel;
                     ShowWavePanel = s.ShowWavePanel;
+                    ShowTerminalPanel = s.ShowTerminalPanel;
                     WaveFollow = s.WaveFollow;
                     // 颜色合法性校验：手改坏值按默认色启动
                     if (s.TxColor is { } tc && IsValidHex(tc)) TxColorHex = tc;
@@ -1143,7 +1166,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
             File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(
                 new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex, BaudText,
-                    TxCyclic, TxPeriodMs),
+                    TxCyclic, TxPeriodMs, ShowTerminalPanel),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
@@ -1172,6 +1195,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnTxPeriodMsChanged(int value) => SaveUiSettings();
 
     partial void OnShowWavePanelChanged(bool value) => SaveUiSettings();
+
+    partial void OnShowTerminalPanelChanged(bool value) => SaveUiSettings();
 
     partial void OnWaveFollowChanged(bool value) => SaveUiSettings();
 
@@ -1331,9 +1356,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ---------- 数据流 ----------
 
+    /// <summary>原始 RX 字节旁路（读取线程抛出）：终端视图订阅（线程安全入队，UI 泵消费）。
+    /// 在帧解析分支之前抛出——终端始终拿原始字节流，与接收区显示模式无关。</summary>
+    public event EventHandler<byte[]>? RawRxTap;
+
     /// <summary>读取线程回调：仅入队/喂解析器/记录波形，不做任何 UI 操作。</summary>
     private void OnDataReceived(object? sender, TimedData e)
     {
+        RawRxTap?.Invoke(this, e.Bytes);
         Interlocked.Add(ref _pendingRxBytes, e.Bytes.Length);
         AppendWave(_rxWave, e.Bytes, e.Timestamp, ref _rxPrev); // 波形与解析/显示模式无关
         if (_parser != null)

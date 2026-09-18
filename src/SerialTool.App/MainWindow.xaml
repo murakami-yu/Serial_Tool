@@ -78,6 +78,10 @@
                           VerticalAlignment="Center"
                           ToolTip="显示 / 隐藏图表窗口（独立窗口，状态记忆；关窗 = 取消勾选）"
                           Checked="WavePanelToggle_Changed" Unchecked="WavePanelToggle_Changed"/>
+                <CheckBox Content="终端" IsChecked="{Binding ShowTerminalPanel}" Margin="8,0,0,0"
+                          VerticalAlignment="Center"
+                          ToolTip="显示 / 隐藏终端窗口（VT100/xterm 终端仿真：串口/TCP 字节流按终端方式渲染，键盘输入直接发往对端，支持滚回/复制粘贴）"
+                          Checked="TerminalPanelToggle_Changed" Unchecked="TerminalPanelToggle_Changed"/>
                         <CheckBox Content="多帧面板" IsChecked="{Binding ShowFramesPanel}" Margin="16,0,0,0"
                                   VerticalAlignment="Center"
                                   Checked="FramesPanelToggle_Changed" Unchecked="FramesPanelToggle_Changed"
