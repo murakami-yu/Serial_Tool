@@ -30,6 +30,10 @@
                       DisplayMemberPath="Name" VerticalAlignment="Center"
                       ToolTip="已保存的会话（Config/terminal_sessions.json）"/>
             <Button x:Name="NewSshBtn" Content="+ SSH" Click="NewSsh_Click" FontWeight="Bold"/>
+            <Button x:Name="NewTelnetBtn" Content="+ Telnet" Click="NewTelnet_Click" FontWeight="Bold" Margin="6,0,0,0"
+                    ToolTip="新建 Telnet 会话（RFC 854 IAC 协商，自动接受服务器回显）"/>
+            <Button x:Name="NewLocalBtn" Content="+ 本地" Click="NewLocal_Click" FontWeight="Bold" Margin="6,0,0,0"
+                    ToolTip="新建本地终端（ConPTY 承载 PowerShell / cmd，零外部依赖）"/>
         </DockPanel>
 
         <!-- 会话标签区 -->

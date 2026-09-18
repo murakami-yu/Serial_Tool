@@ -218,6 +218,32 @@ public partial class TerminalWindow : Window
 
     private void NewSsh_Click(object sender, RoutedEventArgs e) => OpenSshDialog(prefill: null);
 
+    private void NewTelnet_Click(object sender, RoutedEventArgs e) => OpenTelnetDialog(prefill: null);
+
+    private void NewLocal_Click(object sender, RoutedEventArgs e)
+    {
+        var view = new TerminalView();
+        Services.ConPtySession con;
+        var title = "本地终端";
+        try
+        {
+            con = new Services.ConPtySession(view.Terminal.Cols, view.Terminal.Rows);
+            title = con.CommandLine.StartsWith("pwsh") ? "PowerShell"
+                : con.CommandLine.StartsWith("powershell") ? "PowerShell 5" : "cmd";
+        }
+        catch (Exception ex)
+        {
+            view.Dispose();
+            MessageBox.Show(this, $"本地终端启动失败：{ex.Message}", "终端",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var session = TerminalSession.Local(con, view, title);
+        var tab = BuildTab(session, closable: true);
+        Sessions.Items.Add(tab);
+        Sessions.SelectedItem = tab;
+    }
+
     private void ConnectSaved_Click(object sender, RoutedEventArgs e)
     {
         if (SavedCombo.SelectedItem is not SavedSession s)
@@ -226,7 +252,10 @@ public partial class TerminalWindow : Window
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        OpenSshDialog(s);
+        if (s.Kind == "telnet")
+            OpenTelnetDialog(s);
+        else
+            OpenSshDialog(s);
     }
 
     private void DeleteSaved_Click(object sender, RoutedEventArgs e)
@@ -277,6 +306,40 @@ public partial class TerminalWindow : Window
             return;
         }
 
+        var tab = BuildTab(session, closable: true);
+        Sessions.Items.Add(tab);
+        Sessions.SelectedItem = tab;
+    }
+
+    private void OpenTelnetDialog(SavedSession? prefill)
+    {
+        var dlg = new TelnetConnectDialog() { Owner = this };
+        if (prefill is not null)
+            dlg.Prefill(prefill);
+        if (dlg.ShowDialog() != true || dlg.Request is not { } req)
+            return;
+
+        if (req.SaveToList)
+        {
+            var name = req.SaveName ?? $"{req.Host}:{req.Port}";
+            _saved.AddOrUpdate(new SavedSession(name, "telnet", req.Host, req.Port, "", 0, ""));
+            RefreshSavedCombo();
+        }
+
+        var backend = new Backends.Telnet.TelnetBackend();
+        var view = new TerminalView();
+        var session = TerminalSession.Telnet(backend, view, $"telnet {req.Host}:{req.Port}");
+        try
+        {
+            backend.Open(new Backends.Telnet.TelnetConfig(req.Host, req.Port));
+        }
+        catch (Exception ex)
+        {
+            session.Dispose();
+            MessageBox.Show(this, $"连接失败：{ex.Message}", "新建 Telnet 会话",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         var tab = BuildTab(session, closable: true);
         Sessions.Items.Add(tab);
         Sessions.SelectedItem = tab;

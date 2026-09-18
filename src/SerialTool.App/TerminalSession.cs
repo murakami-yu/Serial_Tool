@@ -54,6 +54,41 @@ public sealed class TerminalSession : IDisposable
         return s;
     }
 
+    /// <summary>独立 Telnet 会话（无 resize 通知：v1 不做 NAWS）。</summary>
+    public static TerminalSession Telnet(Backends.Telnet.TelnetBackend backend, TerminalView view, string title)
+    {
+        var s = new TerminalSession(title, view, backend);
+        backend.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
+        backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
+        {
+            s.Status = "已断开：" + msg;
+        });
+        view.InputEmitted += bytes =>
+        {
+            try { backend.Write(bytes); }
+            catch { }
+        };
+        return s;
+    }
+
+    /// <summary>本地终端会话（ConPTY）：输入管道复用 IBusBackend.Write，resize→ConPTY。</summary>
+    public static TerminalSession Local(Services.ConPtySession con, TerminalView view, string title)
+    {
+        var s = new TerminalSession(title, view, con);
+        con.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
+        con.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
+        {
+            s.Status = "已退出：" + msg;
+        });
+        view.InputEmitted += bytes =>
+        {
+            try { con.Write(bytes); }
+            catch { }
+        };
+        view.Resized += (cols, rows) => con.Resize(cols, rows);
+        return s;
+    }
+
     /// <summary>关闭会话：独立会话断开 backend 并释放视图（主连接会话仅释放视图，连接归主面板管）。</summary>
     public void Dispose()
     {

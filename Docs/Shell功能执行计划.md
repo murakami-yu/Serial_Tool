@@ -1,7 +1,7 @@
 # Shell 功能执行计划：终端仿真 / SSH / 多会话（Xshell/MobaXterm 方向）
 
 > 批次代号：**V1.4**（终端/Shell 功能线，与 V1.3「发送历史/热插拔」并行不冲突）
-> 日期：2026-09-18 ｜ 状态：**M0/M1/M2 已实现（构建 0 错误 / 98 单测全绿 / 启动冒烟 ×2；M1 回环与 M2 真机验收待人工确认），M3 待启动**
+> 日期：2026-09-19 ｜ 状态：**计划主体完成：M0-M4（Telnet + 本地终端）全部实现（107 单测全绿；M1 回环/M2 SSH/M3 多会话/M4 真机验收待人工清单在 §3.3/§4.3/§5.3/§6.1）；SFTP 与端口转发按「可选按需」待需求确认后独立批次**
 > 关联：[Serial_Tool_Design.md](Serial_Tool_Design.md) ｜ [README 路线图](../README.md) ｜ [功能增强执行计划](功能增强执行计划.md)
 
 ## 0. 完成度跟踪（每完成一个阶段更新此表）
@@ -12,7 +12,7 @@
 | M1 串口终端 | 连上串口设备 → 终端窗渲染 VT 输出（颜色/清屏/光标/滚回）→ 键入即时回显交互 | ✅ 完成（代码+构建+冒烟；TCP 回环/真机项待人工确认） | 2026-09-18 |
 | M2 SSH 会话 | 连真实 Linux 主机交互 shell（密码/私钥、host key 首次确认、resize 通知） | ✅ 代码完成（构建+98 单测+冒烟；真机验收待人工） | 2026-09-18 |
 | M3 多会话 | 并发 N 个终端会话 + 标签页切换 + 保存的主机快速连接 | ✅ 代码完成（构建+98 单测+冒烟；多并发验收待人工） | 2026-09-19 |
-| M4 扩展（可选） | Telnet / 本地终端 ConPTY / SFTP，按需逐项启动 | ⬜ 未开始 | — |
+| M4 扩展（可选） | Telnet / 本地终端 ConPTY / SFTP，按需逐项启动 | ✅ Telnet + 本地终端完成（107 单测+ConPTY 实测回显/resize/销毁）；SFTP/端口转发待需求确认 | 2026-09-19 |
 
 ## 1. 背景与选型（已定稿）
 
@@ -135,14 +135,20 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 - [ ] 保存主机 → 重启程序 → 选中点「连接」一键重连（凭据补输）—— **待人工真机**。
 - [ ] 关标签/关窗正确断开对应连接（无句柄泄漏）—— **待人工真机**（销毁路径：关标签/关窗/主窗退出三处均已清理）。
 
-## 6. M4：可选扩展（按需逐项启动）⬜
+## 6. M4：可选扩展 ✅（Telnet + 本地终端完成；SFTP/端口转发待需求）
 
-| 项 | 说明 | 前置 |
-| --- | --- | --- |
-| Telnet | TcpBackend + IAC 协商（极小），终端窗选协议 | M3 |
-| 本地终端 | ConPTY P/Invoke 承载 PowerShell/cmd，同一 TerminalView | M1 控件稳定 |
-| SFTP | SSH.NET SftpClient + 简易双栏文件面板（MobaXterm 式） | M2 |
-| 端口转发 | SSH.NET 转发列表 UI | M2 |
+**实现记录（2026-09-19）**：
+- **Telnet**：`Backends/Telnet/TelnetNegotiator.cs`（RFC 854 IAC 协商纯逻辑，9 单测：透传/IAC IAC 转义/WILL-DO 应答策略〔接受服务器 ECHO+SGA、其余拒绝〕/DO 全拒含 NAWS/子协商丢弃/单字节命令忽略/跨包分片状态机/输出转义/数据流混合）+ `TelnetBackend`（同构事件流，协商应答读线程直写）；终端窗「+ Telnet」对话框 + 会话标签；保存会话 Kind="telnet" 快速连接分支。
+- **本地终端**：`App/Services/ConPtySession.cs`（ConPTY 纯 P/Invoke 零依赖，实现 IBusBackend；pwsh→powershell 探测兜底；EOF→等退→Terminate→收 ConPTY 的关闭顺序）。**实测通过**：PowerShell 启动横幅/命令回显（含 VT 着色）/resize/销毁全链路。
+- **ConPTY 踩坑记录（重要）**：① STARTUPINFOW 必须含全部 8 个 DWORD（易漏 dwXSize/dwYSize）——缺 2 个使 STARTUPINFOEXW=104≠112，CreateProcessW 报 **Win32 错误 87**；② 必须设 `STARTF_USESTDHANDLES`（对齐 Pty.Net 生产实现）——否则子进程**回落父控制台**而非挂接 ConPTY（症状：输出漏到宿主进程控制台、管道只有 16 字节初始化转义）。两处均已在代码注释中标注。
+
+### 6.1 验收状态
+
+- [x] Telnet 协商器 9 单测全绿（107 总计）。
+- [x] ConPTY 本地终端实测：启动/回显/resize/销毁（探针程序，PowerShell 5.1）。
+- [ ] Telnet 连真实设备（嵌入式 telnetd）字符模式回显 —— **待人工真机**。
+- [ ] 终端窗「+ 本地」交互体验（字体渲染/中文/复制粘贴）—— **待人工**。
+- [ ] SFTP / 端口转发 —— **待需求确认后独立批次**（SFTP 为大 UI 件：双栏浏览 + 传输队列）。
 
 ## 7. 风险与对策
 
