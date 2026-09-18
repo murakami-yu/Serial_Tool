@@ -15,6 +15,7 @@ using SerialTool.Core;
 using SerialTool.Core.Framing;
 using SerialTool.Backends;
 using SerialTool.Backends.Serial;
+using SerialTool.Backends.Ssh;
 using SerialTool.Backends.Tcp;
 
 namespace SerialTool.App.ViewModels;
@@ -74,6 +75,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private readonly SerialBackend _serialBackend = new();
     private readonly TcpBackend _tcpBackend = new();
+    private readonly SshBackend _sshBackend = new();
+
+    /// <summary>SSH 已知主机库（TOFU）：Config/known_hosts.json。</summary>
+    private readonly KnownHostsStore _knownHosts =
+        new(System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "known_hosts.json"));
+
+    // 终端网格最近尺寸（SSH 初始 PTY 与 resize 通知用；未开过终端按 80×24）
+    private int _termCols = 80, _termRows = 24;
 
     /// <summary>当前活动连接（串口或 TCP），未连接为 null。</summary>
     private IBusBackend? _active;
@@ -95,7 +104,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private DeviceInfo? _selectedDevice;
 
-    /// <summary>连接方式：0 = 串口，1 = TCP。</summary>
+    /// <summary>连接方式：0 = 串口，1 = TCP，2 = SSH。</summary>
     [ObservableProperty]
     private int _connTypeIndex;
 
@@ -106,7 +115,35 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int _tcpPort = 8899;
 
     public bool IsSerial => ConnTypeIndex == 0;
-    public bool IsTcp => ConnTypeIndex != 0;
+    public bool IsTcp => ConnTypeIndex == 1;
+    public bool IsSsh => ConnTypeIndex == 2;
+
+    // ---------- SSH 连接参数（凭据不持久化，其余入 ui_settings.json） ----------
+
+    [ObservableProperty]
+    private string _sshHost = "192.168.1.100";
+
+    [ObservableProperty]
+    private int _sshPort = 22;
+
+    [ObservableProperty]
+    private string _sshUser = "root";
+
+    /// <summary>认证方式：0 = 密码，1 = 私钥文件。</summary>
+    [ObservableProperty]
+    private int _sshAuthIndex;
+
+    [ObservableProperty]
+    private string _sshKeyPath = "";
+
+    /// <summary>登录密码（PasswordBox 回写，不持久化不落盘）。</summary>
+    public string SshPassword { get; set; } = "";
+
+    /// <summary>私钥口令（PasswordBox 回写，不持久化不落盘）。</summary>
+    public string SshKeyPassphrase { get; set; } = "";
+
+    public bool IsSshPasswordAuth => SshAuthIndex != 1;
+    public bool IsSshKeyAuth => SshAuthIndex == 1;
 
     /// <summary>生效波特率文本（预设或自定义值，持久化到 Config/ui_settings.json）；
     /// 主框不直接键入，自定义经下拉「自定义…」对话框。</summary>
@@ -371,6 +408,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _serialBackend.ErrorOccurred += OnBackendError;
         _tcpBackend.DataReceived += OnDataReceived;
         _tcpBackend.ErrorOccurred += OnBackendError;
+        _sshBackend.DataReceived += OnDataReceived;
+        _sshBackend.ErrorOccurred += OnBackendError;
+        _sshBackend.HostKeyVerifying += OnSshHostKeyVerifying;
 
         _flushTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -554,10 +594,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ---------- 连接方式联动 ----------
 
+    partial void OnSshAuthIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsSshPasswordAuth));
+        OnPropertyChanged(nameof(IsSshKeyAuth));
+        SaveUiSettings();
+    }
+
+    partial void OnSshHostChanged(string value) => SaveUiSettings();
+
+    partial void OnSshPortChanged(int value) => SaveUiSettings();
+
+    partial void OnSshUserChanged(string value) => SaveUiSettings();
+
+    partial void OnSshKeyPathChanged(string value) => SaveUiSettings();
+
     partial void OnConnTypeIndexChanged(int value)
     {
         OnPropertyChanged(nameof(IsSerial));
         OnPropertyChanged(nameof(IsTcp));
+        OnPropertyChanged(nameof(IsSsh));
         OnPropertyChanged(nameof(CanControlPins));
         TogglePortCommand.NotifyCanExecuteChanged();
         // 切换连接方式时若已连接则先断开
@@ -623,11 +679,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _active = _serialBackend;
                 StatusText = $"已打开 {SelectedDevice.Id} @ {baud}";
             }
-            else
+            else if (IsTcp)
             {
                 _tcpBackend.Open(new TcpConfig(TcpHost.Trim(), TcpPort));
                 _active = _tcpBackend;
                 StatusText = $"TCP {TcpHost.Trim()}:{TcpPort} 已连接";
+            }
+            else
+            {
+                // SSH：连接在 UI 线程同步进行（10s 超时，LAN 亚秒）；主机指纹事件同步弹窗裁决
+                _sshBackend.Open(new SshConfig(SshHost.Trim(), SshPort, SshUser.Trim(),
+                    SshAuthIndex == 0 ? SshPassword : null,
+                    SshAuthIndex == 1 ? SshKeyPath : null,
+                    SshAuthIndex == 1 ? SshKeyPassphrase : null,
+                    _termCols, _termRows));
+                _active = _sshBackend;
+                StatusText = $"SSH {SshUser.Trim()}@{SshHost.Trim()}:{SshPort} 已连接";
             }
             IsPortOpen = true;
             _connectedSince = DateTime.Now;
@@ -661,7 +728,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         => IsPortOpen
            || (IsSerial
                ? SelectedDevice is not null
-               : !string.IsNullOrWhiteSpace(TcpHost) && TcpPort is > 0 and <= 65535);
+               : IsTcp
+                   ? !string.IsNullOrWhiteSpace(TcpHost) && TcpPort is > 0 and <= 65535
+                   : !string.IsNullOrWhiteSpace(SshHost) && SshPort is > 0 and <= 65535
+                     && !string.IsNullOrWhiteSpace(SshUser));
 
     /// <summary>手动发送（「发送」按钮 / 输入框 Enter）。</summary>
     [RelayCommand(CanExecute = nameof(CanSend))]
@@ -691,6 +761,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     private bool CanSend() => IsPortOpen && !string.IsNullOrWhiteSpace(TxInput);
+
+    /// <summary>主机指纹确认弹窗请求（同步：连接挂起等待回写 Accepted）。MainWindow 订阅弹窗。</summary>
+    public event EventHandler<SshHostKeyChallenge>? HostKeyChallenge;
+
+    /// <summary>SSH 主机指纹校验（TOFU）：已信任直通；首次/变更弹窗裁决，接受即写 known_hosts。</summary>
+    private void OnSshHostKeyVerifying(object? sender, SshHostKeyChallenge e)
+    {
+        var result = _knownHosts.Verify(e.Host, e.Port, e.Algorithm, e.FingerprintSha256);
+        if (result == KnownHostResult.Trusted)
+        {
+            e.Accepted = true;
+            return;
+        }
+        e.Changed = result == KnownHostResult.Changed;
+        HostKeyChallenge?.Invoke(this, e);
+        if (e.Accepted)
+            _knownHosts.Trust(e.Host, e.Port, e.Algorithm, e.FingerprintSha256);
+    }
+
+    /// <summary>终端网格尺寸变化（TerminalView.Resized）→ SSH 通道窗口变更；记录最近尺寸供下次连接初始 PTY。</summary>
+    public void NotifyTerminalResized(int cols, int rows)
+    {
+        _termCols = cols;
+        _termRows = rows;
+        if (ReferenceEquals(_active, _sshBackend) && _sshBackend.IsOpen)
+            _sshBackend.ResizeTerminal(cols, rows);
+    }
 
     /// <summary>终端输入原始字节发送：不回显进接收区行缓冲、不写会话日志
     /// （终端视图已有对端回显，避免逐键刷接收区），仅计 TX 统计与 TX 波形（与主发送同链路）。</summary>
@@ -1124,7 +1221,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需勾选，勾选状态仍记忆
     private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true,
         string TxColor = "#0078D7", string RxColor = "#1E1E1E", string Baud = "115200",
-        bool TxCyclic = false, int TxPeriodMs = 1000, bool ShowTerminalPanel = false);
+        bool TxCyclic = false, int TxPeriodMs = 1000, bool ShowTerminalPanel = false,
+        string SshHost = "192.168.1.100", int SshPort = 22, string SshUser = "root",
+        int SshAuthIndex = 0, string SshKeyPath = "");
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -1150,6 +1249,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     // 主发送区定时发送：周期坏值按默认 1000ms 启动
                     TxCyclic = s.TxCyclic;
                     if (s.TxPeriodMs > 0) TxPeriodMs = s.TxPeriodMs;
+                    // SSH 参数（凭据不落盘，这里只回填主机/端口/用户名/认证方式/私钥路径）
+                    if (!string.IsNullOrWhiteSpace(s.SshHost)) SshHost = s.SshHost;
+                    if (s.SshPort is > 0 and <= 65535) SshPort = s.SshPort;
+                    if (!string.IsNullOrWhiteSpace(s.SshUser)) SshUser = s.SshUser;
+                    if (s.SshAuthIndex is 0 or 1) SshAuthIndex = s.SshAuthIndex;
+                    SshKeyPath = s.SshKeyPath ?? "";
                 }
             }
         }
@@ -1166,7 +1271,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
             File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(
                 new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex, BaudText,
-                    TxCyclic, TxPeriodMs, ShowTerminalPanel),
+                    TxCyclic, TxPeriodMs, ShowTerminalPanel,
+                    SshHost, SshPort, SshUser, SshAuthIndex, SshKeyPath),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch

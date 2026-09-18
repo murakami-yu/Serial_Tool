@@ -233,6 +233,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- 第一行（串口模式）：设备下拉弹性填满至刷新按钮（MaxWidth 380 仅防超长设备名撑爆面板，
@@ -263,6 +264,20 @@
                                  ToolTip="串口服务器 / TCP 透传设备地址"/>
                     </DockPanel>
 
+                    <!-- 第一行（SSH 模式）：主机弹性填满，端口右置（默认 22） -->
+                    <DockPanel Grid.Row="0"
+                               Visibility="{Binding IsSsh, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="主机" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBlock Text="端口" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBox Text="{Binding SshPort, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="70" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding SshHost, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="6,0,12,0" VerticalAlignment="Center"
+                                 ToolTip="SSH 服务器地址（IP 或主机名）"/>
+                    </DockPanel>
+
                     <!-- 第二行：连接方式下拉弹性填满整行 -->
                     <DockPanel Grid.Row="1" Margin="0,12,0,0">
                         <TextBlock Text="连接" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
@@ -270,6 +285,7 @@
                                   VerticalAlignment="Center">
                             <ComboBoxItem Content="串口"/>
                             <ComboBoxItem Content="TCP"/>
+                            <ComboBoxItem Content="SSH"/>
                         </ComboBox>
                     </DockPanel>
 
@@ -311,8 +327,51 @@
                                   SelectedIndex="{Binding SelectedParityIndex}"/>
                     </Grid>
 
-                    <!-- 第四行：连接/断开主按钮整行宽（TCP 模式第三行隐藏后仍贴底） -->
-                    <Button Grid.Row="3" Margin="0,12,0,0" Command="{Binding TogglePortCommand}"
+                    <!-- 第三行（SSH 模式）：用户名弹性填满 + 认证方式右置 -->
+                    <DockPanel Grid.Row="2" Margin="0,12,0,0"
+                               Visibility="{Binding IsSsh, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="用户" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBlock Text="认证" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                            <ComboBox SelectedIndex="{Binding SshAuthIndex}" Margin="6,0,0,0"
+                                      VerticalAlignment="Center" MinWidth="72">
+                                <ComboBoxItem Content="密码"/>
+                                <ComboBoxItem Content="私钥"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBox Text="{Binding SshUser, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="6,0,12,0" VerticalAlignment="Center" MinWidth="120"
+                                 ToolTip="SSH 登录用户名"/>
+                    </DockPanel>
+
+                    <!-- 第四行（SSH 模式）：认证明细（密码 或 私钥文件+口令；凭据不落盘） -->
+                    <DockPanel Grid.Row="3" Margin="0,10,0,0"
+                               Visibility="{Binding IsSshPasswordAuth, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="密码" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <PasswordBox x:Name="SshPasswordBox" Margin="6,0,0,0" VerticalAlignment="Center"
+                                     PasswordChanged="SshPasswordBox_PasswordChanged"
+                                     ToolTip="登录密码（不保存到磁盘）"/>
+                    </DockPanel>
+                    <DockPanel Grid.Row="3" Margin="0,10,0,0"
+                               Visibility="{Binding IsSshKeyAuth, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="私钥" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBlock Text="口令" VerticalAlignment="Center" Margin="12,0,0,0"
+                                       Foreground="{StaticResource MutedBrush}"/>
+                            <PasswordBox x:Name="SshKeyPassBox" Width="90" Margin="4,0,0,0" VerticalAlignment="Center"
+                                         PasswordChanged="SshKeyPassBox_PasswordChanged"
+                                         ToolTip="私钥口令（无口令可留空，不保存到磁盘）"/>
+                        </StackPanel>
+                        <Button DockPanel.Dock="Right" Content="浏览…" Margin="6,0,0,0"
+                                Click="BrowseSshKey_Click" VerticalAlignment="Center"
+                                ToolTip="选择私钥文件（OpenSSH / PEM 格式；PuTTY .ppk 需先转换为 OpenSSH 格式）"/>
+                        <TextBox Text="{Binding SshKeyPath, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="6,0,6,0" VerticalAlignment="Center" MinWidth="80"
+                                 ToolTip="私钥文件路径（~/.ssh/id_ed25519 等；ppk 不支持）"/>
+                    </DockPanel>
+
+                    <!-- 第五行：连接/断开主按钮整行宽（TCP/串口模式明细行隐藏后仍贴底） -->
+                    <Button Grid.Row="4" Margin="0,12,0,0" Command="{Binding TogglePortCommand}"
                             FontWeight="Bold" Foreground="White">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">

@@ -29,6 +29,7 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel vm)
         {
             vm.RxRendered += OnRxRendered;
+            vm.HostKeyChallenge += OnHostKeyChallenge;
         }
         // 主窗 Closing 先于 owned 窗口的关闭流程：先把图表窗切到真实关闭模式，
         // 否则它的「X = 取消勾选」语义会取消关闭，导致主窗关了进程却不退
@@ -38,6 +39,7 @@ public partial class MainWindow : Window
             if (DataContext is MainViewModel vm)
             {
                 vm.RxRendered -= OnRxRendered;
+                vm.HostKeyChallenge -= OnHostKeyChallenge;
                 vm.Dispose();
             }
         };
@@ -436,6 +438,39 @@ public partial class MainWindow : Window
         if (RxOutput is null || RxOutput.IsMouseOver)
             return;
         RxOutput.ScrollToEnd();
+    }
+
+    // ---------- SSH 连接（凭据回写 + 私钥选择 + 主机指纹确认弹窗） ----------
+
+    /// <summary>PasswordBox 不参与绑定，凭据经此回写 VM（仅内存，不落盘）。</summary>
+    private void SshPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+            vm.SshPassword = SshPasswordBox.Password;
+    }
+
+    private void SshKeyPassBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+            vm.SshKeyPassphrase = SshKeyPassBox.Password;
+    }
+
+    private void BrowseSshKey_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择私钥文件",
+            Filter = "私钥文件|id_*;*.pem;*.key;*.openssh|所有文件|*.*",
+        };
+        if (dlg.ShowDialog(this) == true && DataContext is MainViewModel vm)
+            vm.SshKeyPath = dlg.FileName;
+    }
+
+    /// <summary>主机指纹确认（同步模态：SSH 连接挂起等待 Accepted 回写）。</summary>
+    private void OnHostKeyChallenge(object? sender, SerialTool.Backends.Ssh.SshHostKeyChallenge e)
+    {
+        var win = new HostKeyConfirmWindow(e) { Owner = this };
+        win.ShowDialog();
     }
 
     // ---------- 发送区 ----------

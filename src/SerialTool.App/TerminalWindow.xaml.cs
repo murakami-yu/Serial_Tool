@@ -25,7 +25,11 @@ public partial class TerminalWindow : Window
 
         _view.InputEmitted += bytes => _vm.SendTerminalBytes(bytes);
         _view.ViewportChanged += SyncScrollbar;
-        _view.Resized += (_, _) => SyncScrollbar();
+        _view.Resized += (cols, rows) =>
+        {
+            SyncScrollbar();
+            _vm.NotifyTerminalResized(cols, rows); // SSH 通道窗口变更；串口/TCP 忽略
+        };
         _view.TitleChanged += () =>
             Title = string.IsNullOrEmpty(_view.Terminal.Title) ? "终端" : $"终端 — {_view.Terminal.Title}";
 
