@@ -49,6 +49,11 @@ public partial class TerminalWindow : Window
         UpdateMainTitle();
         RefreshSavedCombo();
 
+        // 开箱即用：主连接未建立时自动开一个本地终端标签（用户可直接输命令，
+        // 不必先连串口/TCP/SSH）；用户主动关掉后不重开（尊重选择）
+        if (!_vm.IsPortOpen)
+            StartLocalSession();
+
         Sessions.SelectionChanged += (_, _) => FocusActiveView();
     }
 
@@ -182,7 +187,7 @@ public partial class TerminalWindow : Window
             tip.Children.Add(new TextBlock
             {
                 Text = "在主窗口打开串口 / TCP / SSH 连接后，对端输出将在此按 VT 终端方式渲染；"
-                     + "工具条「+ SSH」可另开独立会话（与主面板连接互不影响）",
+                     + "工具条「+ 本地」可随时开本地 PowerShell 直接输命令（未连接时已自动打开一个）",
                 Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A)),
                 FontSize = 12,
                 Margin = new Thickness(16, 10, 16, 0),
@@ -220,7 +225,10 @@ public partial class TerminalWindow : Window
 
     private void NewTelnet_Click(object sender, RoutedEventArgs e) => OpenTelnetDialog(prefill: null);
 
-    private void NewLocal_Click(object sender, RoutedEventArgs e)
+    private void NewLocal_Click(object sender, RoutedEventArgs e) => StartLocalSession();
+
+    /// <summary>新建本地终端会话（ConPTY 承载 pwsh → powershell 探测兜底）。</summary>
+    private void StartLocalSession()
     {
         var view = new TerminalView();
         Services.ConPtySession con;

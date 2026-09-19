@@ -140,6 +140,7 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 **实现记录（2026-09-19）**：
 - **Telnet**：`Backends/Telnet/TelnetNegotiator.cs`（RFC 854 IAC 协商纯逻辑，9 单测：透传/IAC IAC 转义/WILL-DO 应答策略〔接受服务器 ECHO+SGA、其余拒绝〕/DO 全拒含 NAWS/子协商丢弃/单字节命令忽略/跨包分片状态机/输出转义/数据流混合）+ `TelnetBackend`（同构事件流，协商应答读线程直写）；终端窗「+ Telnet」对话框 + 会话标签；保存会话 Kind="telnet" 快速连接分支。
 - **本地终端**：`App/Services/ConPtySession.cs`（ConPTY 纯 P/Invoke 零依赖，实现 IBusBackend；pwsh→powershell 探测兜底；EOF→等退→Terminate→收 ConPTY 的关闭顺序）。**实测通过**：PowerShell 启动横幅/命令回显（含 VT 着色）/resize/销毁全链路。
+- **开箱即用（2026-09-19 用户反馈）**：终端窗打开时若主连接未建立，**自动开一个本地终端标签**并聚焦——打开终端即可直接输命令，无需先连串口/TCP/SSH 或找「+ 本地」按钮；用户主动关闭该标签后不重开。冒烟验证：默认配置（终端窗关）零子进程；终端窗开 + 未连接 → conhost+powershell 自动拉起。
 - **ConPTY 踩坑记录（重要）**：① STARTUPINFOW 必须含全部 8 个 DWORD（易漏 dwXSize/dwYSize）——缺 2 个使 STARTUPINFOEXW=104≠112，CreateProcessW 报 **Win32 错误 87**；② 必须设 `STARTF_USESTDHANDLES`（对齐 Pty.Net 生产实现）——否则子进程**回落父控制台**而非挂接 ConPTY（症状：输出漏到宿主进程控制台、管道只有 16 字节初始化转义）。两处均已在代码注释中标注。
 
 ### 6.1 验收状态
