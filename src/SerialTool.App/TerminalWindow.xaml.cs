@@ -55,6 +55,9 @@ public partial class TerminalWindow : Window
             StartLocalSession();
 
         Sessions.SelectionChanged += (_, _) => FocusActiveView();
+        // 开箱即用配套的焦点修正：构造期自动开本地标签时窗口尚未显示，SelectionChanged 里的
+        // Focus() 静默失败——窗口加载完成后补聚焦，否则用户"打开终端窗打字"第一轮按键落空
+        Loaded += (_, _) => FocusActiveView();
     }
 
     /// <summary>读取线程回调：仅入队（线程安全），UI 泵统一消费。</summary>
@@ -130,7 +133,7 @@ public partial class TerminalWindow : Window
         var host = new Border
         {
             CornerRadius = new CornerRadius(6),
-            Background = Brushes.Black,
+            Background = new SolidColorBrush(Controls.TerminalView.ThemeBackground),
             BorderBrush = TryFindResource("BorderBrush") as Brush,
             BorderThickness = new Thickness(1),
             ClipToBounds = true,
@@ -167,7 +170,7 @@ public partial class TerminalWindow : Window
             var overlay = new Border
             {
                 CornerRadius = new CornerRadius(6),
-                Background = new SolidColorBrush(Color.FromArgb(230, 0, 0, 0)),
+                Background = new SolidColorBrush(Color.FromArgb(230, 0x1E, 0x1E, 0x1E)),
                 IsHitTestVisible = false,
                 Visibility = _vm.IsPortOpen ? Visibility.Collapsed : Visibility.Visible,
             };

@@ -26,7 +26,7 @@
 | 13 | 多端口并行 | 多串口标签页独立收发、对比视图 | V1.3 |
 | 14 | 免安装分发 | 自包含单 exe（~70MB 零依赖），zip 分发，双击即用 | V1 |
 | 15 | TCP 连接 | 串口服务器/TCP 透传设备连接（USR-TCP232、ESP8266 透传、ser2net 等）：地址+端口、3s 连接超时、断线自动提示；收发/日志/多帧全功能复用 | V1.0 ✅ |
-| 16 | 终端仿真（Shell） | **VT100/xterm 终端视图**（XTerm.NET 2.0.2 纯托管引擎 + WPF 自绘 TerminalView，零 WebView 不破坏单 exe 分发）：串口/TCP 字节流按终端渲染（颜色/清屏/光标/主备屏/滚回 5000 行/256 色+真彩/CJK 宽字符）、键盘即时编码发往对端（IME 可用）、滚轮+滚动条滚回、拖选复制/粘贴（Ctrl+Shift+C/V）、鼠标事件转发（vim/htop）；独立终端窗多标签（主连接 + 独立会话，关标签即断开）；**M2 SSH 远程会话 ✅**（SSH.NET 2026.0.0：密码/私钥认证、host key TOFU 首连确认与变更警告 known_hosts.json、resize→远端 stty 跟随、凭据不落盘）；**M3 多会话 ✅**（会话管理器 terminal_sessions.json + 快速连接）；**M4 Telnet ✅**（RFC854 IAC 协商器，哑终端+服务器回显策略，9 单测）+ **本地终端 ✅**（ConPTY 纯 P/Invoke 零依赖，pwsh/powershell 承载，实测回显/resize）；SFTP/端口转发待需求（[Shell功能执行计划](Shell功能执行计划.md)） | V1.4 ✅ 主体完成（真机验收待人工） |
+| 16 | 终端仿真（Shell） | **VT100/xterm 终端视图**（XTerm.NET 2.0.2 纯托管引擎 + WPF 自绘 TerminalView，零 WebView 不破坏单 exe 分发）：串口/TCP 字节流按终端渲染（颜色/清屏/光标/主备屏/滚回 5000 行/256 色+真彩/CJK 宽字符）、键盘即时编码发往对端（IME 可用）、滚轮+滚动条滚回、拖选复制/粘贴（Ctrl+Shift+C/V）、鼠标事件转发（vim/htop）；**Campbell 调色板 + 柔和深底主题**（#1E1E1E 底 / #D4D4D4 字 / #264F78 选区，经 `TerminalOptions.Theme` 下发，2026-09-19）；独立终端窗多标签（主连接 + 独立会话，关标签即断开）；**M2 SSH 远程会话 ✅**（SSH.NET 2026.0.0：密码/私钥认证、host key TOFU 首连确认与变更警告 known_hosts.json、resize→远端 stty 跟随、凭据不落盘）；**M3 多会话 ✅**（会话管理器 terminal_sessions.json + 快速连接）；**M4 Telnet ✅**（RFC854 IAC 协商器，哑终端+服务器回显策略，9 单测）+ **本地终端 ✅**（ConPTY 纯 P/Invoke 零依赖，pwsh/powershell 承载，实测回显/resize）；SFTP/端口转发待需求（[Shell功能执行计划](Shell功能执行计划.md)） | V1.4 ✅ 主体完成（真机验收待人工） |
 
 ### 1.2 功能优先级
 

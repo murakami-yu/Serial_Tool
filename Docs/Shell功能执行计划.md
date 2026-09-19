@@ -53,15 +53,15 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 - 串口/TCP 连接后，终端窗把 RX 字节流按 VT100/xterm 解释渲染：颜色、清屏、光标移动、`htop`/`vim` 备屏切换。
 - 键盘输入即时编码发往对端（回显由对端负责）；中文输入法可输入（经 `GenerateCharInput`）。
 - 滚回：鼠标滚轮 + 滚动条，滚到底自动跟随；备屏（vim 等）禁滚。
-- 复制粘贴：拖选 + 右键菜单（复制/粘贴/清屏/回到底部）；`Ctrl+Shift+C/V`。
+- 复制粘贴：拖选 + 右键菜单（复制/粘贴/清屏/回到底部）；`Ctrl+Shift+C/V`；`Ctrl+C` 遵循终端惯例——**有选区时复制（复制即清选区，对齐 Windows Terminal），无选区时发送 `^C`（\x03）中断对端**。
 - 未连接时显示遮罩「未连接」；连接断开终端保留内容（只读）。
 
 ### 3.2 设计要点
 
 **TerminalView**（`src/SerialTool.App/Controls/TerminalView.cs`，自定义 FrameworkElement）：
 
-- 度量：字体 `Global Monospace`（WPF 复合字体，CJK 等宽回退且宽度=2 格），`FormattedText("M")` 取格宽，行高 = 字体行高；`Resize` 按视口尺寸反推行列（下限 80×24 起步按内容）。
-- 渲染（`OnRender`）：背景 → 逐行把同属性连续格合并为 run（一条 `FormattedText`）→ 光标（块/闪 530ms）→ 选区高亮。只画视口行（`Lines[YDisp + row]`），`Width==0` 续格跳过。
+- 度量：字体 `Cascadia Mono, SimSun` 复合族（2026-09-19 用户对比截图后选定，演进见 §6：TNR 比例字体方案废弃）。格宽 = max(Cascadia Mono 数字 "0" 字宽≈8.2 DIP, SimSun 全角/2=7)——等宽字体单字符宽即格宽，中文两格 16.4 vs 字形 14 留白仅 2.4；行高 = max(两字体行高)×1.08；`Resize` 按视口尺寸反推行列（下限 80×24 起步按内容）。
+- 渲染（`OnRender`）：背景 → 逐行同底色连续格合并为一个矩形；文字**逐格**绘制（为比例字体兼容性设计——字宽≠格宽时合并 run 会漂移；等宽字体下结果与合并等价），`FormattedText` 按 (文本,粗,斜,前景色) 缓存、DPI 变化清空；超格宽字符水平压缩兜底 → 光标（块/闪 530ms）→ 选区高亮。只画视口行（`Lines[YDisp + row]`），`Width==0` 续格跳过。
 - 字节泵：`ConcurrentQueue<byte[]>`（任意线程投递）+ `DispatcherTimer 16ms` 出队 `terminal.Write` + 合帧失效（输出高峰每帧最多一次全视口重绘）。
 - 输入：`KeyDown` → `GenerateKeyInput`（返回字节序列）→ `InputEmitted` 事件；`TextInput`（IME）→ `GenerateCharInput`；粘贴文本逐字节写入。
 - 引擎回话（`DataReceived` 事件，如 DA 应答/DSR 光标报告）→ 同样走 `InputEmitted` 发对端。
@@ -142,6 +142,9 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 - **本地终端**：`App/Services/ConPtySession.cs`（ConPTY 纯 P/Invoke 零依赖，实现 IBusBackend；pwsh→powershell 探测兜底；EOF→等退→Terminate→收 ConPTY 的关闭顺序）。**实测通过**：PowerShell 启动横幅/命令回显（含 VT 着色）/resize/销毁全链路。
 - **开箱即用（2026-09-19 用户反馈）**：终端窗打开时若主连接未建立，**自动开一个本地终端标签**并聚焦——打开终端即可直接输命令，无需先连串口/TCP/SSH 或找「+ 本地」按钮；用户主动关闭该标签后不重开。冒烟验证：默认配置（终端窗关）零子进程；终端窗开 + 未连接 → conhost+powershell 自动拉起。
 - **ConPTY 踩坑记录（重要）**：① STARTUPINFOW 必须含全部 8 个 DWORD（易漏 dwXSize/dwYSize）——缺 2 个使 STARTUPINFOEXW=104≠112，CreateProcessW 报 **Win32 错误 87**；② 必须设 `STARTF_USESTDHANDLES`（对齐 Pty.Net 生产实现）——否则子进程**回落父控制台**而非挂接 ConPTY（症状：输出漏到宿主进程控制台、管道只有 16 字节初始化转义）。两处均已在代码注释中标注。
+- **终端配色现代化（2026-09-19 用户反馈「优化 shell 界面显示和文字配色」）**：XTerm.NET 默认纯黑底（#000000）+ 纯白字 + VGA 老调色板 → 改 **Campbell 调色板（Windows Terminal 默认 16 色）+ VS Code 式柔和深底**：背景 #1E1E1E、前景 #D4D4D4、光标 #AEAFAD、选区 #264F78，经 `TerminalOptions.Theme`（`ThemeOptions`）下发；宿主 Border 背景与未连接遮罩同步 #1E1E1E（`TerminalView.ThemeBackground` 常量单一来源）。**同轮修复潜藏渲染缺陷**：原 DrawRun 把 `GetFgColorMode()==0` 当「默认色」——实际 mode 0 = **256 色调色板索引**（256/257 才是默认标记，mode 1 = RGB 直出），导致全部索引色（含 30-37/90-97 SGR 标准色、38;5;n 256 色）被画成默认前景色、索引背景整片不画；新增 `ResolveAttrColor`（mode 分流 + 默认标记 + `PaletteColor` 查表）统一 DrawRun 与 Block 光标重画两路。验证：本地 PowerShell 标签灌入 16 色 Write-Host + 38;5;208 + 38;2 真彩 + 粗体/下划线混排，截屏逐色肉眼核对正确；107 单测全绿。
+- **终端字体更换（2026-09-19，三轮演进）**：① 用户指定英文 **Times New Roman**、中文 GB2312（本机无 仿宋_GB2312/楷体_GB2312 命名字体 → 宋体 SimSun，GB2312 字符集标准字体）。**渲染架构随之调整**：TNR 是比例字体（i=3.9 / W=13.2 DIP @14pt），原「同属性连续格合并为一条 FormattedText」会让后续字符按自然字宽推进、漂出格网——改为**逐格定位绘制** + `FormattedText` 缓存（key=文本/粗/斜/前景色，DPI 变化清空），背景仍按同底色段合并。② 格宽初版取 max(TNR 粗体 W≈13.7, SimSun 全角/2) → 用户实测反馈「占位太宽」→ 降 9 DIP 基准 + 超格字符（M/W/m/w）水平压缩。③ 用户仍不满意，要求「参考 VS Code 终端」——出 TNR vs **Cascadia Mono**（VS Code 终端默认等宽）双方案对比截图，用户选定后者：**最终方案 = `Cascadia Mono, SimSun`**，格宽 = max(数字 0 字宽≈8.2, 全角/2=7)，字距天然均匀、零压缩、对齐精准；逐格绘制与压缩逻辑保留（等宽下不触发，留作防御）。教训：**终端网格场景优先等宽字体，比例字体的压缩/稀疏怎么调都有妥协**。验证：离屏截图逐项核对 + 真实应用窗口截图复核（长路径单行不折行、字符均匀）。
+- **Ctrl+C 失效根因与修复（2026-09-19 用户反馈「ctrl+c 没效果」）**：XTerm.NET 的 `Selection.HasSelection` 在**零宽选区**（单击未拖动）后也为真，且 `GetSelectionText()` 对零宽返回 anchor 处 1 个字符（非空）——鼠标点终端聚焦一次，`Ctrl+C` 就被「有选区→复制」分支吞掉（还污染剪贴板 1 字符），`^C` 永远发不出去。修复三层：① 鼠标抬起时零宽选区即 `ClearSelection`；② `Ctrl+C` 复制分支加「选文非空」守卫；③ **`CopySelection` 复制后清除选区**（Windows Terminal/xterm.js 惯例——引擎不会因新输出/键入自动清选区，残留选区会让后续 Ctrl+C 永远进复制分支）。另实测澄清：`\x03` 写入 ConPTY 输入管在 cmd / powershell(PSReadLine) 下均能正常中断运行中命令（ping -t）与取消行编辑，后端链路无问题。验证：WPF harness 对 TerminalView 注入真实 Ctrl+C 键击（SendInput）——无选区发 03 / 有选区复制且选区即清 / 复制后再按发 03，全过。
 
 ### 6.1 验收状态
 
@@ -156,8 +159,8 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 | 风险 | 对策 |
 | --- | --- |
 | XTerm.NET 年轻库（单一维护者） | 纯托管 MIT；若上游停更可整源 vendor 进仓库（GitHub 当前网络不通，暂走 NuGet 二进制依赖，不阻塞） |
-| WPF 自绘性能（输出高峰） | 只画视口 + 同属性 run 合并 + 16ms 合帧；若仍不足再加 per-line 缓存（计划预留的优化旋钮） |
-| CJK 宽字符度量偏差 | 用 WPF 复合字体 `Global Monospace`（等宽回退按 2 格设计）；冒烟含中文 vim |
+| WPF 自绘性能（输出高峰） | 只画视口 + 文字逐格缓存（逐格绘制为兼容比例字体设计，见 §3.2）+ 16ms 合帧；若仍不足再加 per-line 缓存（计划预留的优化旋钮） |
+| CJK 宽字符度量偏差 | 格宽 = max(Cascadia Mono 数字宽≈8.2, 全角/2=7)，CJK 固定占两格逐格绘制；超格字形水平压缩兜底；冒烟含中文 vim |
 | SSH.NET 不支持 .ppk | UI 明确提示转换（Xshell 用户迁移注意） |
 | 每键回显延迟 | 键入直发（不经 50ms FlushRx）；终端泵 16ms；实测超阈值再降 |
 

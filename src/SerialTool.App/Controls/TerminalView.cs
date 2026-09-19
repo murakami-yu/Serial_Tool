@@ -40,7 +40,7 @@ public class TerminalView : FrameworkElement
     private bool _cursorOn = true;
     private double _pixelsPerDip = 1.0;
 
-    private readonly FontFamily _font = new("Global Monospace"); // 复合字体：CJK 等宽回退、宽度=2 格
+    private readonly FontFamily _font = new("Cascadia Mono, SimSun"); // VS Code 终端方案（2026-09-19 用户对比选定）：英文 Cascadia Mono（等宽，字距天然均匀），中文宋体回退（GB2312 字符集标准字体）
     private readonly Typeface _typeface;
     private readonly Typeface _typefaceBold;
     private readonly Typeface _typefaceItalic;
@@ -78,6 +78,7 @@ public class TerminalView : FrameworkElement
             Rows = 24,
             Scrollback = 5000,
             CursorBlink = true,
+            Theme = TerminalTheme,
         });
         _terminal.DataReceived += (_, e) => InputEmitted?.Invoke(Encoding.UTF8.GetBytes(e.Data));
         _terminal.TitleChanged += (_, _) => TitleChanged?.Invoke();
@@ -155,12 +156,15 @@ public class TerminalView : FrameworkElement
     private void EnsureMetrics()
     {
         if (_metricsReady) return;
-        var m = _typeface;
-        var ft = MakeText("M", m, Brushes.Black);
-        if (ft.Width > 0 && ft.Height > 0)
+        // 格宽 = max(数字 "0" 字宽, CJK 全角/2)：Cascadia Mono 等宽字体单字符宽即格宽基准（"0"≈8.2 DIP @14pt），
+        // 中文宋体全角 14 → 两格 16.4 留白仅 2.4。超格字符（如个别更宽字形/合成斜体溢出）
+        // 仍由 DrawCell 水平压缩兜底（比例字体时期引入，保留作防御）。
+        var ftDigit = MakeText("0", _typeface, Brushes.Black);
+        var ftCjk = MakeText("中", _typeface, Brushes.Black);
+        if (ftDigit.Width > 0 && ftCjk.Width > 0)
         {
-            _cellW = ft.Width;
-            _cellH = Math.Ceiling(ft.Height * 1.08); // 行间微余量：终端观感 + 选区/下划线空间
+            _cellW = Math.Max(ftDigit.Width, ftCjk.Width / 2);
+            _cellH = Math.Ceiling(Math.Max(MakeText("W", _typefaceBold, Brushes.Black).Height, ftCjk.Height) * 1.08); // 行间微余量：终端观感 + 选区/下划线空间
         }
         _metricsReady = true;
     }
@@ -175,7 +179,11 @@ public class TerminalView : FrameworkElement
     {
         EnsureMetrics();
         var m = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11;
-        if (m is > 0) _pixelsPerDip = m.Value;
+        if (m is > 0 && Math.Abs(m.Value - _pixelsPerDip) > 1e-9)
+        {
+            _pixelsPerDip = m.Value;
+            _ftCache.Clear(); // FormattedText 与 pixelsPerDip 绑定，跨 DPI 屏拖窗后必须重建
+        }
 
         var size = RenderSize;
         if (size.Width < 1 || size.Height < 1) return;
@@ -210,84 +218,101 @@ public class TerminalView : FrameworkElement
         RenderCursor(dc);
     }
 
-    /// <summary>逐行渲染：Width==1 且属性相同的连续格合并为一条 FormattedText；
-    /// 宽字符（Width==2）独立成段，按格位定位（避免 CJK 回退字体实际字宽 ≠ 2 格时后续字符漂移）。</summary>
+    /// <summary>逐行渲染：TNR 是比例字体（字宽≠格宽），文字必须**逐格**定位绘制
+    /// （同属性合并成一条 FormattedText 会让后续字符漂出格子）；背景仍按同底色连续格
+    /// 合并为一个矩形（避免逐格矩形接缝露底）。宽字符（Width==2）在首格位绘制、占两格。</summary>
     private void RenderLine(DrawingContext dc, XTerm.Buffer.BufferLine line, int viewRow, double top, int width)
     {
-        var col = 0;
         var length = Math.Min(line.Length, width);
+        var col = 0;
         while (col < length)
         {
             var cell = line[col];
-            if (cell.Width == 0 || string.IsNullOrEmpty(cell.Content)) { col++; continue; }
+            if (cell.Width == 0) { col++; continue; } // 宽字符续格：由首格覆盖
+            var cellW2 = Math.Max(1, cell.Width);
 
-            if (cell.Width >= 2)
-            {
-                DrawRun(dc, line, viewRow, top, col, cell.Content, cell.Attributes, cells: cell.Width);
-                col += cell.Width;
-                continue;
-            }
+            var (fgVal, bgVal) = ResolveCellColors(cell.Attributes);
 
-            var runStart = col;
-            var runAttr = cell.Attributes;
-            var sb = new StringBuilder(32);
-            while (col < length)
+            // 背景段合并：同底色（含反显折算后）的连续格 → 一个矩形
+            var bgEnd = col + cellW2;
+            while (bgEnd < length)
             {
-                var c = line[col];
-                if (c.Width != 1 || string.IsNullOrEmpty(c.Content) || !c.Attributes.Equals(runAttr)) break;
-                sb.Append(c.Content);
-                col++;
+                var c2 = line[bgEnd];
+                if (c2.Width == 0) { bgEnd++; continue; }
+                var (_, b2) = ResolveCellColors(c2.Attributes);
+                if (b2 != bgVal) break;
+                bgEnd += Math.Max(1, c2.Width);
             }
-            DrawRun(dc, line, viewRow, top, runStart, sb.ToString(), runAttr, cells: col - runStart);
+            if (cell.Attributes.IsInverse() || bgVal != _terminal.Colors.Background)
+                dc.DrawRectangle(ResolveColor(bgVal, FallbackBg), null,
+                    new Rect(PadH + col * _cellW, top, (bgEnd - col) * _cellW, _cellH));
+
+            // 文字：段内逐格绘制（缓存 FormattedText）
+            var i = col;
+            while (i < bgEnd)
+            {
+                var cc = line[i];
+                if (cc.Width == 0) { i++; continue; }
+                var cw = Math.Max(1, cc.Width);
+                if (!string.IsNullOrEmpty(cc.Content))
+                {
+                    var hasText = false;
+                    foreach (var ch in cc.Content) if (!char.IsWhiteSpace(ch)) { hasText = true; break; }
+                    if (hasText) DrawCell(dc, cc.Content, cc.Attributes, i, top, cw);
+                }
+                i += cw;
+            }
+            col = bgEnd;
         }
     }
 
-    private void DrawRun(DrawingContext dc, XTerm.Buffer.BufferLine line, int viewRow, double top,
-        int col, string text, XTerm.Buffer.AttributeData attr, int cells)
+    /// <summary>单元格属性 → (前景, 背景) 0xRRGGBB（反显已折算）。</summary>
+    private (int fg, int bg) ResolveCellColors(XTerm.Buffer.AttributeData attr)
     {
-        var x = PadH + col * _cellW;
-        var w = cells * _cellW;
+        var fg = ResolveAttrColor(attr.GetFgColorMode(), attr.GetFgColor(), _terminal.Colors.Foreground);
+        var bg = ResolveAttrColor(attr.GetBgColorMode(), attr.GetBgColor(), _terminal.Colors.Background);
+        if (attr.IsInverse()) (fg, bg) = (bg, fg);
+        return (fg, bg);
+    }
 
-        var fgMode = attr.GetFgColorMode();
-        var fgColor = attr.GetFgColor();
-        var bgMode = attr.GetBgColorMode();
-        var bgColor = attr.GetBgColor();
-        var inverse = attr.IsInverse();
+    // FormattedText 缓存：比例字体逐格绘制每帧构造量大，按 (文本,粗,斜,前景色) 缓存；
+    // DPI 变化（跨屏拖窗）时整体失效（OnRender 里清）
+    private readonly Dictionary<(string text, bool bold, bool italic, int fg), FormattedText> _ftCache = new();
 
-        int fgVal, bgVal;
-        if (inverse)
-        {
-            fgVal = bgMode == 0 ? _terminal.Colors.Background : bgColor;
-            bgVal = fgMode == 0 ? _terminal.Colors.Foreground : fgColor;
-        }
-        else
-        {
-            fgVal = fgMode == 0 ? _terminal.Colors.Foreground : fgColor;
-            bgVal = bgMode == 0 ? _terminal.Colors.Background : bgColor;
-        }
-
-        // 背景：非默认或反显时绘制（默认背景已由整幅底色覆盖）
-        if (inverse || bgMode != 0)
-            dc.DrawRectangle(ResolveColor(bgVal, FallbackBg), null, new Rect(x, top, w, _cellH));
-
-        var hasText = false;
-        foreach (var ch in text) if (!char.IsWhiteSpace(ch)) { hasText = true; break; }
-        if (!hasText) return;
-
-        var bold = attr.IsBold();
-        var italic = attr.IsItalic();
+    private FormattedText GetCellText(string text, bool bold, bool italic, int fg, Brush brush)
+    {
+        var key = (text, bold, italic, fg);
+        if (_ftCache.TryGetValue(key, out var cached)) return cached;
+        if (_ftCache.Count > 4000) _ftCache.Clear(); // 防御：长会话组合爆炸时从头再来
         var face = bold
             ? (italic ? _typefaceBoldItalic : _typefaceBold)
             : (italic ? _typefaceItalic : _typeface);
-        var fgBrush = ResolveColor(fgVal, FallbackFg);
+        var ft = MakeText(text, face, brush);
+        _ftCache[key] = ft;
+        return ft;
+    }
 
+    private void DrawCell(DrawingContext dc, string text, XTerm.Buffer.AttributeData attr,
+        int col, double top, int cells)
+    {
+        var x = PadH + col * _cellW;
+        var w = cells * _cellW;
+        var (fgVal, _) = ResolveCellColors(attr);
+        var fgBrush = ResolveColor(fgVal, FallbackFg);
+        var bold = attr.IsBold();
+        var italic = attr.IsItalic();
+        var ft = GetCellText(text, bold, italic, fgVal, fgBrush);
+        var y = top + (_cellH - ft.Height) / 2;
+
+        // 比例字体格宽折中：比格宽的字符（TNR 的 M/W/m/w、粗体大写）水平压缩进格，
+        // 以格左为原点（格内左对齐语义不变）；CJK 全角 14 ≤ 两格 18 不会触发
+        var squeeze = ft.Width > w;
         var dim = attr.IsDim();
         if (dim) dc.PushOpacity(0.55);
-        var ft = MakeText(text, face, fgBrush);
-        var y = top + (_cellH - ft.Height) / 2;
+        if (squeeze) dc.PushTransform(new ScaleTransform(w / ft.Width, 1.0, x, y));
         dc.DrawText(ft, new Point(x, y));
 
-        // 下划线 / 删除线 / 上划线（Baseline 定位）
+        // 下划线 / 删除线 / 上划线（Baseline 定位，按格宽不随字形压缩）
         var baseline = y + ft.Baseline;
         var pen = new Pen(fgBrush, 1.0);
         if (attr.IsUnderline())
@@ -296,13 +321,14 @@ public class TerminalView : FrameworkElement
             dc.DrawLine(pen, new Point(x, top + _cellH * 0.45), new Point(x + w, top + _cellH * 0.45));
         if (attr.IsOverline())
             dc.DrawLine(pen, new Point(x, top + 1), new Point(x + w, top + 1));
+        if (squeeze) dc.Pop();
         if (dim) dc.Pop();
     }
 
     private void RenderSelection(DrawingContext dc)
     {
         if (!_terminal.Selection.HasSelection) return;
-        var selBrush = new SolidColorBrush(Color.FromArgb(90, 0, 120, 215));
+        var selBrush = new SolidColorBrush(Color.FromArgb(110, 38, 79, 120)); // 主题 Selection #264F78 半透明
         selBrush.Freeze();
         for (var r = 0; r < _terminal.Rows; r++)
         {
@@ -359,12 +385,22 @@ public class TerminalView : FrameworkElement
                 dc.DrawRectangle(cursorBrush, null, new Rect(x, y, w, _cellH));
                 if (!string.IsNullOrEmpty(cellText) && !string.IsNullOrEmpty(cellText.Trim()))
                 {
-                    var fg = cellAttr.IsInverse()
-                        ? ResolveColor(cellAttr.GetBgColorMode() == 0 ? _terminal.Colors.Background : cellAttr.GetBgColor(), FallbackBg)
-                        : ResolveColor(cellAttr.GetFgColorMode() == 0 ? _terminal.Colors.Background : cellAttr.GetFgColor(), FallbackBg);
+                    // Block 光标格内字符用底色重画（含反显：取的是该格"底"一侧的颜色）
+                    var underRgb = cellAttr.IsInverse()
+                        ? ResolveAttrColor(cellAttr.GetFgColorMode(), cellAttr.GetFgColor(), _terminal.Colors.Foreground)
+                        : ResolveAttrColor(cellAttr.GetBgColorMode(), cellAttr.GetBgColor(), _terminal.Colors.Background);
+                    var fg = ResolveColor(underRgb, FallbackBg);
                     var ft = MakeText(cellText,
                         cellAttr.IsBold() ? _typefaceBold : _typeface, fg);
-                    dc.DrawText(ft, new Point(x, y + (_cellH - ft.Height) / 2));
+                    var ty = y + (_cellH - ft.Height) / 2;
+                    // 与 DrawCell 同规则：超格宽字符水平压缩，避免光标块重画溢出
+                    if (ft.Width > w)
+                    {
+                        dc.PushTransform(new ScaleTransform(w / ft.Width, 1.0, x, ty));
+                        dc.DrawText(ft, new Point(x, ty));
+                        dc.Pop();
+                    }
+                    else dc.DrawText(ft, new Point(x, ty));
                 }
                 break;
         }
@@ -372,8 +408,37 @@ public class TerminalView : FrameworkElement
 
     // ---------- 颜色 ----------
 
-    private const int FallbackFg = 0xFFFFFF;
-    private const int FallbackBg = 0x000000;
+    /// <summary>终端背景色（与主题 Background 一致；宿主边框、遮罩同步用此色）。</summary>
+    public static readonly Color ThemeBackground = Color.FromRgb(0x1E, 0x1E, 0x1E);
+
+    /// <summary>终端主题：Campbell 调色板（Windows Terminal 默认）+ VS Code 式柔和深底。
+    /// 仅引擎默认色——对端 OSC 10/11/104 仍可运行时改写。</summary>
+    private static readonly ThemeOptions TerminalTheme = new()
+    {
+        Background = "#1E1E1E",
+        Foreground = "#D4D4D4",
+        Cursor = "#AEAFAD",
+        Selection = "#264F78",
+        Black = "#0C0C0C",
+        Red = "#C50F1F",
+        Green = "#13A10E",
+        Yellow = "#C19C00",
+        Blue = "#0037DA",
+        Magenta = "#881798",
+        Cyan = "#3A96DD",
+        White = "#CCCCCC",
+        BrightBlack = "#767676",
+        BrightRed = "#E74856",
+        BrightGreen = "#16C60C",
+        BrightYellow = "#F9F1A5",
+        BrightBlue = "#3B78FF",
+        BrightMagenta = "#B4009E",
+        BrightCyan = "#61D6D6",
+        BrightWhite = "#F2F2F2",
+    };
+
+    private const int FallbackFg = 0xD4D4D4;
+    private const int FallbackBg = 0x1E1E1E;
 
     /// <summary>0xRRGGBB → 冻结画刷（缓存）。OSC 104/10/11 改调色板时整缓存失效。</summary>
     private SolidColorBrush ResolveColor(int rgb, int fallback)
@@ -384,6 +449,15 @@ public class TerminalView : FrameworkElement
         b.Freeze();
         _brushCache[key] = b;
         return b;
+    }
+
+    /// <summary>单元格属性颜色 → 0xRRGGBB。mode 0 = 256 色调色板索引（256=默认前景 / 257=默认背景标记），
+    /// mode 1 = 真彩直出（实证：AttributeData.GetFgColorMode 返回 XTerm.Common.ColorMode 原值）。</summary>
+    private int ResolveAttrColor(int mode, int val, int defaultRgb)
+    {
+        if (mode == 1) return val;                    // RGB
+        if (val is 256 or 257) return defaultRgb;     // 默认色标记
+        return PaletteColor(val);                     // 0-255 调色板
     }
 
     /// <summary>256 色索引 → 0xRRGGBB：0-15 取主题调色板（可被 OSC 改写），
@@ -427,7 +501,8 @@ public class TerminalView : FrameworkElement
             if (key == Key.C) { e.Handled = true; CopySelection(); return; }
             if (key == Key.V) { e.Handled = true; PasteFromClipboard(); return; }
         }
-        if (key == Key.C && mods == XMods.Control && _terminal.Selection.HasSelection)
+        if (key == Key.C && mods == XMods.Control && _terminal.Selection.HasSelection
+            && !string.IsNullOrEmpty(_terminal.Selection.GetSelectionText()))
         {
             e.Handled = true;
             CopySelection();
@@ -584,9 +659,15 @@ public class TerminalView : FrameworkElement
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         if (_selAnchor is null) return;
+        var anchor = _selAnchor.Value;
         Mouse.Capture(null);
         _selAnchor = null;
         _terminal.Selection.EndSelection();
+        // 纯点击（未拖动）留下的是零宽选区，引擎 EndSelection 不会自动清除（HasSelection 恒真，
+        // 会把 Ctrl+C 导向复制分支吞掉 ^C）——零宽即清除，顺带实现"点击清除已有选区"的终端惯例
+        var (col, row) = CellFromPoint(e.GetPosition(this));
+        if (col == (int)anchor.X && row == (int)anchor.Y)
+            _terminal.Selection.ClearSelection();
         InvalidateVisual();
         e.Handled = true;
     }
@@ -634,6 +715,11 @@ public class TerminalView : FrameworkElement
         var text = _terminal.Selection.GetSelectionText();
         if (!string.IsNullOrEmpty(text))
             Clipboard.SetText(text);
+        // 复制后清除选区（Windows Terminal / xterm.js 惯例）：引擎不会因新输出自动清选区，
+        // 留着会让后续 Ctrl+C 永远进复制分支、再也发不出 ^C（实测 GetSelectionText 对零宽
+        // 选区也返回非空字符，光靠"空文本"判断挡不住）
+        _terminal.Selection.ClearSelection();
+        InvalidateVisual();
     }
 
     public void PasteFromClipboard()
