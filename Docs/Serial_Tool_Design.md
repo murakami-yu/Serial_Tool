@@ -86,7 +86,8 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 - **图表窗最小尺寸实测标定（2026-09-03）**：`OnSourceInitialized` 时清掉最小约束 → `SizeToContent=WidthAndHeight` 逐页（时序图/字段曲线）`UpdateLayout` 量出**含标题栏/边框的完整显示窗口尺寸**，取两页最大值写回 `MinWidth/MinHeight`；两块画布 `MinHeight=200` 为图形可读性地板（2026-09-03 用户要求：配置表恒定 96px，画布不许被压到看不清——字段曲线页是高度瓶颈，最小高 = 表 96 + 画布地板 200 + 固定开销），本机实测最小 **744×485**（SetWindowPos 强缩 400×200 被钳制），窗口无法缩到任何元素被裁切或图形不可读；随字号/DPI/系统主题自动重标定，无需手维护魔法数
 - **各框互不覆盖（2026-09-01 V1.2.x）**：左列容器、右列工具面板均 `ClipToBounds`——任何缩放下越界渲染在自己框内裁切，绝不覆盖相邻框架。图表迁独立窗口后左列仅剩接收区单框架（原「接收区/图表」比例行 2.4\* : 1.6\* + GridSplitter 方案随之退役）；窗口 `MinHeight=660` 保留（WPF Grid 在可用空间小于各行 MinHeight 之和时会**无视 MinHeight 按星比压缩**的教训沿用）
 - **等宽输入 28px 基线（2026-09-01）**：`Mono` 样式只换字体族（Cascadia 行高偏大，靠收紧行距落回基线），表格/工具条中 Mono 框与普通框同高、字号全局统一
-- **浅色主题（SSCOM 经典风格）**：白色背景 + 标准 Windows 控件观感（用户指定，2026-08-29 由深色改浅色）
+- **浅色主题（SSCOM 经典风格）**：白色背景 + 标准 Windows 控件观感（用户指定，2026-08-29 由深色改浅色）；**2026-09-19 起各窗口背景色可自定义**（外观设置集中管理，见下条「外观自定义」）
+- **外观自定义（2026-09-19）**：主窗状态栏「外观…」弹外观设置窗——主窗口（SSH/Telnet 等对话框跟随）/ 终端窗口 / 波形窗口 / 模板编辑器 4 个窗口背景各自独立 + 终端内容底色（引擎默认背景，ANSI 调色板不动；已开标签经 `TerminalView.SetContentBackground` 走 `ColorPalette.SetBackground` 即 OSC 11 同路径实时换底，宿主边框与未连接遮罩同步）。**`Appearance` 单例（Services/）作全窗口统一绑定源**：各窗 DataContext 类型不一（TerminalWindow 无 DataContext、对话框各有宿主数据），`{Binding Source={x:Static s:Appearance.Instance}, Converter=HexToBrush}` 是唯一路径一致的方案；MainViewModel 桥接 ui_settings.json（加载写单例 + `IsValidHex` 校验坏值回退默认，订阅单例 PropertyChanged 变化即落盘）；终端主题由静态共享改 `BuildTheme()` 每实例新建（背景色取自单例，防后建实例改色牵连）；仅背景色可配，面板/文字/边框色保持浅色主题体系（深色窗底下白卡片突兀属预期，由用户选色负责）
 - **统一控件风格体系**：TextBox / ComboBox / Button / CheckBox 全部圆角（4px 框 / 3px 勾选框）+ 蓝色高亮（悬停/聚焦/展开）；全局 28px 控件高度基线保证混排行垂直居中；下拉弹层空列表时叠「（空）」占位（2026-09-19：否则缩成几像素细缝像渲染残影）；接收/发送框顶部对齐 + 自动换行 + 纵向刷屏（2026-08-29 UI 打磨定稿）
 - **状态可见**：标题栏连接状态 + 底部状态栏（RX/TX 计数、帧统计）
 
@@ -109,6 +110,7 @@ V3      CAN 后端（Peak.PCANBasic.NET 或 slcan）+ DBC 解析 + 信号曲线
 | V1.2.x | 图表面板迁独立窗口：时序图 / 字段曲线从主窗左列迁出为 `ChartWindow`（「波形」复选框显隐、X=取消勾选、位置与缩放状态保留、隐藏期渲染暂停重开补帧）；主窗左列简化为接收区单框架 | `ChartWindow.xaml(.cs)`（MainWindow 图表代码整体迁入） | ✅ 完成（2026-09-02：构建零错误、92/92 单测、启动冒烟；修复 XAML 初始化期设 Owner 崩溃） |
 | V1.2.x | 接收区 TX/RX 行颜色自定义：接收框由 `TextBox` 换 `RichTextBox`（TextBox 无 Document/TextPointer API，不支持逐行着色——原已知局限随之解除），渲染管线改分段载荷 `RxSeg(Text, IsTx)` 按方向着 Paragraph；接收区标题栏右侧「发送色/接收色」色块按钮 + 16 色调色板弹层 + 恢复默认（自绘 `ColorChipButton`，无新依赖）；默认发送 #0078D7 / 接收 #1E1E1E，配置存 ui_settings.json；换色即全量重绘；截断改段落粒度删除保色 | `Controls/ColorChipButton.xaml(.cs)`、`Converters.cs`（HexToBrush）、MainWindow / MainViewModel 渲染管线 | ✅ 完成（2026-09-05：构建零错误、92/92 单测；TCP 回环实测双色/换色重绘/恢复默认/持久化/旧配置回退/>800K 截断保色） |
 | V1.2.x | 图表窗默认关闭（用户按需勾选，勾选状态仍记忆）+ 最小尺寸实测标定（`SizeToContent` 逐页量出完整显示尺寸写回 Min，画布可读性地板 200px，随 DPI/字号自适应，SetWindowPos 强缩实测被钳制在 744×485） | VM `UiSettings` 默认值、`ChartWindow.CalibrateMinSize` | ✅ 完成（2026-09-03：92/92 单测、启动验证不弹窗、EnumWindows/钳制实测） |
+| V1.2.x | 各界面背景色自定义：`Appearance` 单例（Services/）+ 8 窗口 XAML 统一 x:Static 绑定（4 主窗口各自独立 + 4 对话框跟随主窗）；终端内容底色 `BuildTheme()` 实例化注入 + 已开标签 `ColorPalette.SetBackground` 实时换底（宿主边框/未连接遮罩同步）；状态栏「外观…」入口 + `AppearanceWindow` 集中设置（复用 ColorChipButton）；ui_settings.json 持久化（IsValidHex 坏值回退默认） | `Services/Appearance.cs`、`AppearanceWindow.xaml(.cs)`、各窗口 Background 绑定、`TerminalView`/`TerminalWindow` | ✅ 完成（2026-09-19：构建零错误、107/107 单测；截图实测五路改色/重启持久化/坏值回退/终端已开标签实时换底） |
 | V1.3 | 发送历史、热插拔（WM_DEVICECHANGE）、多端口标签、流控（RTS-CTS） | — | 规划 |
 | V2 | I2C 后端（FTDI.FTD2XX_NET）、扫描/寄存器读写、L2 序列图 | `Backends/I2cBackend.cs` | 规划 |
 | V3 | CAN 后端（PCAN 或 slcan）、DBC 解析、信号曲线 | `Backends/CanBackend.cs`、`Core/Dbc` | 规划 |
