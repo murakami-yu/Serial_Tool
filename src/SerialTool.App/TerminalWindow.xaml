@@ -1,7 +1,7 @@
 <Window x:Class="SerialTool.App.TerminalWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="终端" Width="900" Height="560" MinWidth="420" MinHeight="280"
+        Title="终端" Width="900" Height="560" MinWidth="600" MinHeight="280"
         Background="{StaticResource BgBrush}"
         WindowStartupLocation="Manual">
 
@@ -9,7 +9,9 @@
          主连接 tab（字节流经 MainViewModel.RawRxTap 旁路，主面板负责开/断）
          + 独立 SSH 会话 tab（自持 backend，关标签即断开）
          + 工具条：新建会话 / 已保存会话快速连接 / 删除
-         生命周期与图表窗同模式：取消勾选/X=销毁，重开新建，主窗记忆位置尺寸 -->
+         生命周期与图表窗同模式：取消勾选/X=销毁，重开新建，主窗记忆位置尺寸。
+         MinWidth=600：三枚新建按钮 + 会话下拉 + 连接/删除 的最小完整宽度，
+         再窄提示文本先省略（末位填充 + 省略号），按钮永不裁切 -->
 
     <Grid Margin="12">
         <Grid.RowDefinitions>
@@ -17,11 +19,14 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 工具条 -->
+        <!-- 工具条：按钮全部停靠（左=新建，右=会话操作），提示文本末位填充剩余宽、
+             窗口收窄时先缩它（省略号收尾），DockPanel 永不裁切按钮 -->
         <DockPanel Grid.Row="0" Margin="0,0,0,8">
-            <TextBlock DockPanel.Dock="Right" Text="关标签即断开该会话；主连接请回主面板断开"
-                       Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                       TextTrimming="CharacterEllipsis"/>
+            <Button x:Name="NewSshBtn" DockPanel.Dock="Left" Content="+ SSH" Click="NewSsh_Click" FontWeight="Bold"/>
+            <Button x:Name="NewTelnetBtn" DockPanel.Dock="Left" Content="+ Telnet" Click="NewTelnet_Click" FontWeight="Bold" Margin="6,0,0,0"
+                    ToolTip="新建 Telnet 会话（RFC 854 IAC 协商，自动接受服务器回显）"/>
+            <Button x:Name="NewLocalBtn" DockPanel.Dock="Left" Content="+ 本地" Click="NewLocal_Click" FontWeight="Bold" Margin="6,0,0,0"
+                    ToolTip="新建本地终端（ConPTY 承载 PowerShell / cmd，零外部依赖）"/>
             <Button DockPanel.Dock="Right" Content="删除" Click="DeleteSaved_Click" Margin="6,0,0,0"
                     ToolTip="删除选中的已保存会话（仅列表项，不影响连接）"/>
             <Button DockPanel.Dock="Right" Content="连接" Click="ConnectSaved_Click" Margin="6,0,0,0"
@@ -29,11 +34,9 @@
             <ComboBox x:Name="SavedCombo" DockPanel.Dock="Right" MinWidth="150" MaxWidth="240"
                       DisplayMemberPath="Name" VerticalAlignment="Center"
                       ToolTip="已保存的会话（Config/terminal_sessions.json）"/>
-            <Button x:Name="NewSshBtn" Content="+ SSH" Click="NewSsh_Click" FontWeight="Bold"/>
-            <Button x:Name="NewTelnetBtn" Content="+ Telnet" Click="NewTelnet_Click" FontWeight="Bold" Margin="6,0,0,0"
-                    ToolTip="新建 Telnet 会话（RFC 854 IAC 协商，自动接受服务器回显）"/>
-            <Button x:Name="NewLocalBtn" Content="+ 本地" Click="NewLocal_Click" FontWeight="Bold" Margin="6,0,0,0"
-                    ToolTip="新建本地终端（ConPTY 承载 PowerShell / cmd，零外部依赖）"/>
+            <TextBlock Text="关标签即断开该会话；主连接请回主面板断开"
+                       Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
+                       TextAlignment="Right" TextTrimming="CharacterEllipsis"/>
         </DockPanel>
 
         <!-- 会话标签区 -->

@@ -15,6 +15,15 @@ public partial class MainWindow : Window
     private const double SplitterWidth = 12;
     private const double LeftColumnMinWidth = 420;
     private const double FramesColumnSafety = 2;
+    // 底部条行高：串口/TCP 四行内容 215（余量 18 DIP）；SSH 多一行认证明明细 = 五行，
+    // 内容精确账 = 四行 148 + 认证明细行 38 + GroupBox 上 Margin 10 ≈ 239，248 余量仅 ~9 DIP
+    // 会被 150% 取整/字体度量吃掉（2026-09-19 用户实测按钮底缘仍被削）→ 264 余量 ~25
+    private const double BottomBarHeightNormal = 215;
+    private const double BottomBarHeightSsh = 264;
+    // 窗口最小高随底条联动：MinHeight 之和若超出窗口可用高，Grid 无视行 MinHeight 星比压缩
+    // = 底条被压、按钮照样被削。串口/TCP 660 为历史标定值，SSH = 660 + 底条增量 49 ≈ 710
+    private const double WindowMinHeightNormal = 660;
+    private const double WindowMinHeightSsh = 710;
     // 下限 = 整表最小需求：固定列 246 + 内容/备注最小宽 200 + 面板内边距 24 + 余量。
     // 再低 DataGrid 会按比例压缩所有列（含固定列），列头会被切字
     private const double FramesPanelMinWidth = 500;
@@ -30,6 +39,7 @@ public partial class MainWindow : Window
         {
             vm.RxRendered += OnRxRendered;
             vm.HostKeyChallenge += OnHostKeyChallenge;
+            vm.PropertyChanged += OnVmPropertyChanged;
         }
         // 主窗 Closing 先于 owned 窗口的关闭流程：先把图表窗切到真实关闭模式，
         // 否则它的「X = 取消勾选」语义会取消关闭，导致主窗关了进程却不退
@@ -40,6 +50,7 @@ public partial class MainWindow : Window
             {
                 vm.RxRendered -= OnRxRendered;
                 vm.HostKeyChallenge -= OnHostKeyChallenge;
+                vm.PropertyChanged -= OnVmPropertyChanged;
                 vm.Dispose();
             }
         };
@@ -50,6 +61,7 @@ public partial class MainWindow : Window
             ApplyFramesPanelState();
             ApplyWavePanelState();
             ApplyTerminalPanelState();
+            ApplyBottomBarHeight();
         }), System.Windows.Threading.DispatcherPriority.Loaded);
 
         // 预览带式拖动：拖动中两面板列宽保持起始值完全静止（本机虚拟显示驱动对「连续失效的重内容
@@ -284,6 +296,29 @@ public partial class MainWindow : Window
             Math.Min(Left + ActualWidth + 8, wa.Right - _chartWindow.Width));
         _chartWindow.Top = Math.Max(wa.Top,
             Math.Min(Top, wa.Bottom - _chartWindow.Height));
+    }
+
+    // ---------- 底部条高度随连接方式切换（SSH 五行内容需 264，其余四行 215） ----------
+
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.ConnTypeIndex))
+            ApplyBottomBarHeight();
+    }
+
+    /// <summary>底部条行高按连接方式设定：行内容行数不同（SSH 多认证明细行），
+    /// 固定 215 会在 SSH 模式削掉「连接」按钮底缘。切换时重置为该方式默认值
+    /// （用户拖出的更大高度不保留：模式切换本身重排面板内容，回到默认不裁切）。
+    /// 窗口 MinHeight 同步联动：否则窗口被拉到低于「各行 MinHeight 之和」时
+    /// Grid 无视行 MinHeight 星比压缩，底条被压扁 = 按钮照样被削。</summary>
+    private void ApplyBottomBarHeight()
+    {
+        if (DataContext is not MainViewModel vm) return;
+        var ssh = vm.IsSsh;
+        var h = ssh ? BottomBarHeightSsh : BottomBarHeightNormal;
+        BottomBarRow.MinHeight = h;
+        BottomBarRow.Height = new GridLength(h);
+        MinHeight = ssh ? WindowMinHeightSsh : WindowMinHeightNormal;
     }
 
     // ---------- 终端窗口（VT100/xterm 终端仿真，独立窗口）显示/隐藏 ----------

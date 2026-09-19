@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:SerialTool.App.ViewModels"
         xmlns:ctrl="clr-namespace:SerialTool.App.Controls"
         Title="Serial Tool — 通用串口调试工具"
-        Width="1220" Height="740" MinWidth="1220" MinHeight="660"
+        Width="1290" Height="740" MinWidth="1290" MinHeight="660"
         SizeChanged="MainWindow_SizeChanged"
         Background="{StaticResource BgBrush}"
         WindowStartupLocation="CenterScreen">
@@ -12,8 +12,10 @@
         <vm:MainViewModel/>
     </Window.DataContext>
 
-    <!-- 窗口 MinWidth=1220：实测 WrapPanel 行（顶部功能条/发送区顶行/串口配置排）不换行阈值 ~1185
-         + 字体度量余量；再窄这些行会折行错位（2026-09-01 实测）。默认宽与 MinWidth 一致，启动即不换行 -->
+    <!-- 窗口 MinWidth=1290：顶部功能条不换行阈值在加入「终端」复选框后实测 ~1246
+         （2026-09-19 截图实测；原 2026-09-01 的 ~1185 不含终端）+ 字体度量余量；
+         再窄这些行会折行错位。默认宽与 MinWidth 一致，启动即不换行。
+         MinHeight=660 为串口/TCP 模式值；SSH 模式底条加高，代码同步抬到 710 -->
 
     <Grid x:Name="RootGrid" Margin="12">
         <Grid.ColumnDefinitions>
@@ -25,7 +27,10 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*" MinHeight="220"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="215" MinHeight="215" MaxHeight="380"/>
+            <!-- 底部条默认 215（串口/TCP 四行）；SSH 模式五行内容由代码切到 264，
+                 窗口 MinHeight 同步 660→710（低于各行 MinHeight 之和时 Grid 星比压缩会削底条），
+                 见 MainWindow.xaml.cs.ApplyBottomBarHeight -->
+            <RowDefinition x:Name="BottomBarRow" Height="215" MinHeight="215" MaxHeight="380"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -123,8 +128,9 @@
         </Grid>
 
         <!-- ===== 横向分隔条：拖动手动调整发送区/串口配置条的高度。
-             底部条为固定初始高度（215），MinHeight 与默认同值：串口配置四行内容 ~148 DIP + 标题/边距 ~31
-             后余量 18 DIP（205 时仅 8 DIP，显示缩放取整/字体度量差异会吃掉余量致按钮底部被削），
+             底部条初始高度由代码按连接方式设定（串口/TCP 四行 = 215，SSH 五行 = 264，
+             见 MainWindow.xaml.cs.ApplyBottomBarHeight；215 = 四行内容 ~148 DIP + 标题/边距 ~31
+             + 余量 18 DIP——余量小于 8 会被显示缩放取整/字体度量差异吃掉致按钮底部被削），
              分隔条只放大不缩小、任何拖动都不裁切，
              输入框内容再多也不会自动撑高挤压接收区 ===== -->
         <GridSplitter Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Height="8" Margin="0,4,0,0"
@@ -167,7 +173,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <!-- 三内容行等分整列高度（内容垂直居中）：底部条拖高时间距均匀变大，排布始终均衡 -->
+                            <!-- 三内容行等分整列高度（内容垂直居中）：底部条拖高时间距均匀变大，排布始终均衡；
+                                 按钮行为末行（Auto 贴底）——曾误写 Grid.Row=4 越界，WPF 钳到末行才没露馅 -->
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="*"/>
@@ -185,7 +192,7 @@
                                   ToolTip="DTR 输出电平手动控制；连接串口后可用"/>
 
                         
-                        <!-- 行3：HEX 接收显示 + HEX 发送 同行 -->
+                        <!-- 行2：HEX 接收显示 + HEX 发送 同行 -->
                         <CheckBox Grid.Row="1" Grid.Column="0" Content="HEX 显示" IsChecked="{Binding ShowHex}"
                                   VerticalAlignment="Center"
                                   ToolTip="接收区按十六进制显示（取消则按文本解码显示）"/>
@@ -208,8 +215,8 @@
                                        Foreground="{StaticResource MutedBrush}"/>
                         </StackPanel>
 
-                        <!-- 按钮行：两键等宽拉满控制区，左右边界与上方元素列对齐（Enter 发送仍可用） -->
-                        <Grid Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                        <!-- 按钮行（末行 Auto）：两键等宽拉满控制区，左右边界与上方元素列对齐（Enter 发送仍可用） -->
+                        <Grid Grid.Row="3" Grid.ColumnSpan="2" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="8"/>

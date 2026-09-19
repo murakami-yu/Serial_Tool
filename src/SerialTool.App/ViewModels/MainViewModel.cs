@@ -142,8 +142,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>私钥口令（PasswordBox 回写，不持久化不落盘）。</summary>
     public string SshKeyPassphrase { get; set; } = "";
 
-    public bool IsSshPasswordAuth => SshAuthIndex != 1;
-    public bool IsSshKeyAuth => SshAuthIndex == 1;
+    /// <summary>SSH 认证明细行可见性：仅在 SSH 模式下按认证方式二选一（曾漏 IsSsh 门槛，
+    /// 串口/TCP 模式「密码」行也常驻，把底部条「连接」按钮挤出可视区）。</summary>
+    public bool IsSshPasswordAuth => IsSsh && SshAuthIndex != 1;
+    public bool IsSshKeyAuth => IsSsh && SshAuthIndex == 1;
 
     /// <summary>生效波特率文本（预设或自定义值，持久化到 Config/ui_settings.json）；
     /// 主框不直接键入，自定义经下拉「自定义…」对话框。</summary>
@@ -614,6 +616,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsSerial));
         OnPropertyChanged(nameof(IsTcp));
         OnPropertyChanged(nameof(IsSsh));
+        OnPropertyChanged(nameof(IsSshPasswordAuth));
+        OnPropertyChanged(nameof(IsSshKeyAuth));
         OnPropertyChanged(nameof(CanControlPins));
         TogglePortCommand.NotifyCanExecuteChanged();
         // 切换连接方式时若已连接则先断开

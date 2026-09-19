@@ -140,19 +140,31 @@
                             <Popup IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"
                                    Placement="Bottom" Focusable="False" PopupAnimation="Slide">
                                 <!-- 悬浮圆角面板：四角统一 CornerRadius 4（向上/向下翻转都好看），
-                                     2px 悬浮间隙 + 2px 内衬，避免高亮条直角顶到圆角边框 -->
+                                     2px 悬浮间隙 + 2px 内衬，避免高亮条直角顶到圆角边框。
+                                     空列表时 StackPanel 高度为 0，弹层缩成一条几像素高的细缝（像渲染残影），
+                                     叠一行「（空）」占位提示，弹层保持正常尺寸 -->
                                 <Border CornerRadius="4" Background="{StaticResource PanelBrush}"
                                         BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
                                         Margin="0,2,0,2" Padding="2" MinWidth="{TemplateBinding ActualWidth}"
                                         SnapsToDevicePixels="True">
-                                    <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}" SnapsToDevicePixels="True">
-                                        <StackPanel IsItemsHost="True"
-                                                    KeyboardNavigation.DirectionalNavigation="Contained"/>
-                                    </ScrollViewer>
+                                    <Grid>
+                                        <TextBlock x:Name="EmptyHint" Text="（空）"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   Padding="10,5" Visibility="Collapsed"
+                                                   HorizontalAlignment="Center"/>
+                                        <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}" SnapsToDevicePixels="True">
+                                            <StackPanel IsItemsHost="True"
+                                                        KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                        </ScrollViewer>
+                                    </Grid>
                                 </Border>
                             </Popup>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <!-- 空列表：显示「（空）」占位，弹层不再缩成细缝 -->
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="EmptyHint" Property="Visibility" Value="Visible"/>
+                            </Trigger>
                             <!-- 键入焦点：与输入框/下拉展开同款的蓝色加粗描边 -->
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
