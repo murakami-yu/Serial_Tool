@@ -508,6 +508,13 @@ public partial class MainWindow : Window
         win.ShowDialog();
     }
 
+    /// <summary>外观设置（各界面背景色）：模态小窗，ColorChipButton 绑 Appearance 单例即时生效。</summary>
+    private void Appearance_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new AppearanceWindow { Owner = this };
+        win.ShowDialog();
+    }
+
     // ---------- 发送区 ----------
 
     /// <summary>Enter 发送（Shift+Enter 换行）。</summary>

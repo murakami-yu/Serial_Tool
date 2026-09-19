@@ -437,6 +437,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch { /* 目录创建失败时打开按钮会提示 */ }
 
         LoadUiSettings();
+        // 外观单例属性变化（外观设置窗改色）→ 即存（与 TxColorHex 等同一"变化即落盘"惯例）
+        Services.Appearance.Instance.PropertyChanged += (_, _) => SaveUiSettings();
         SyncBaudSelection();
         LoadTemplates();
         _ = LoadPortsAsync();
@@ -1232,7 +1234,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string TxColor = "#0078D7", string RxColor = "#1E1E1E", string Baud = "115200",
         bool TxCyclic = false, int TxPeriodMs = 1000, bool ShowTerminalPanel = false,
         string SshHost = "192.168.1.100", int SshPort = 22, string SshUser = "root",
-        int SshAuthIndex = 0, string SshKeyPath = "");
+        int SshAuthIndex = 0, string SshKeyPath = "",
+        string MainBg = Services.Appearance.DefaultMainBg,
+        string TerminalBg = Services.Appearance.DefaultTerminalBg,
+        string ChartBg = Services.Appearance.DefaultChartBg,
+        string TemplateBg = Services.Appearance.DefaultTemplateBg,
+        string TermContentBg = Services.Appearance.DefaultTermContentBg);
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -1264,6 +1271,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (!string.IsNullOrWhiteSpace(s.SshUser)) SshUser = s.SshUser;
                     if (s.SshAuthIndex is 0 or 1) SshAuthIndex = s.SshAuthIndex;
                     SshKeyPath = s.SshKeyPath ?? "";
+                    // 外观（各窗口背景色）：坏值按默认色启动，写入单例供全窗口绑定
+                    var ap = Services.Appearance.Instance;
+                    if (s.MainBg is { } mb && IsValidHex(mb)) ap.MainBgHex = mb;
+                    if (s.TerminalBg is { } tb && IsValidHex(tb)) ap.TerminalBgHex = tb;
+                    if (s.ChartBg is { } cb && IsValidHex(cb)) ap.ChartBgHex = cb;
+                    if (s.TemplateBg is { } pb && IsValidHex(pb)) ap.TemplateBgHex = pb;
+                    if (s.TermContentBg is { } eb && IsValidHex(eb)) ap.TermContentBgHex = eb;
                 }
             }
         }
@@ -1278,10 +1292,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UiSettingsPath)!);
+            var ap = Services.Appearance.Instance;
             File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(
                 new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex, BaudText,
                     TxCyclic, TxPeriodMs, ShowTerminalPanel,
-                    SshHost, SshPort, SshUser, SshAuthIndex, SshKeyPath),
+                    SshHost, SshPort, SshUser, SshAuthIndex, SshKeyPath,
+                    ap.MainBgHex, ap.TerminalBgHex, ap.ChartBgHex, ap.TemplateBgHex, ap.TermContentBgHex),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch

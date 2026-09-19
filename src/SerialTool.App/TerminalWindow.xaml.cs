@@ -18,8 +18,8 @@ namespace SerialTool.App;
 /// 取消勾选/X=销毁（延迟回写勾选防 Closing 重入）；主窗退出经 CloseForReal 真关并清理全部会话。</summary>
 public partial class TerminalWindow : Window
 {
-    /// <summary>标签页与视图的配对（Session.Tag 存此记录）。</summary>
-    private sealed record SessionTab(TerminalSession Session, TabItem Tab, TextBlock HeaderText);
+    /// <summary>标签页与视图的配对（Session.Tag 存此记录；Host = 终端圆角宿主边框，外观改色时同步底色）。</summary>
+    private sealed record SessionTab(TerminalSession Session, TabItem Tab, TextBlock HeaderText, Border Host);
 
     private readonly MainViewModel _vm;
     private readonly TerminalView _mainView;
@@ -46,6 +46,8 @@ public partial class TerminalWindow : Window
 
         _vm.RawRxTap += OnRawRx;
         _vm.PropertyChanged += OnVmPropertyChanged;
+        // 外观改「终端内容底色」→ 已开标签实时换底（视图 + 宿主边框 + 遮罩）
+        Appearance.Instance.PropertyChanged += OnAppearanceChanged;
         UpdateMainTitle();
         RefreshSavedCombo();
 
@@ -170,7 +172,9 @@ public partial class TerminalWindow : Window
             var overlay = new Border
             {
                 CornerRadius = new CornerRadius(6),
-                Background = new SolidColorBrush(Color.FromArgb(230, 0x1E, 0x1E, 0x1E)),
+                // 底色跟随外观设置的终端内容底色（alpha 230 微透；改色时由 OnAppearanceChanged 同步）
+                Background = new SolidColorBrush(Color.FromArgb(230,
+                    TerminalView.ThemeBackground.R, TerminalView.ThemeBackground.G, TerminalView.ThemeBackground.B)),
                 IsHitTestVisible = false,
                 Visibility = _vm.IsPortOpen ? Visibility.Collapsed : Visibility.Visible,
             };
@@ -205,8 +209,23 @@ public partial class TerminalWindow : Window
         }
 
         var tab = new TabItem { Header = header, Content = grid, Tag = session };
-        _tabs.Add(new SessionTab(session, tab, headText));
+        _tabs.Add(new SessionTab(session, tab, headText, host));
         return tab;
+    }
+
+    /// <summary>外观设置改终端内容底色：全部标签的引擎默认背景 + 宿主边框 + 主连接遮罩同步换色。</summary>
+    private void OnAppearanceChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Appearance.TermContentBgHex)) return;
+        var c = TerminalView.ThemeBackground;
+        var hostBrush = new SolidColorBrush(c);
+        foreach (var t in _tabs)
+        {
+            t.Host.Background = hostBrush;
+            t.Session.View.SetContentBackground(c);
+        }
+        if (_mainOverlay is not null)
+            _mainOverlay.Background = new SolidColorBrush(Color.FromArgb(230, c.R, c.G, c.B));
     }
 
     private Border? _mainOverlay;
@@ -392,6 +411,7 @@ public partial class TerminalWindow : Window
         {
             _vm.RawRxTap -= OnRawRx;
             _vm.PropertyChanged -= OnVmPropertyChanged;
+            Appearance.Instance.PropertyChanged -= OnAppearanceChanged;
             foreach (var t in _tabs)
                 t.Session.Dispose();
             _tabs.Clear();

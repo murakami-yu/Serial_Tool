@@ -1,8 +1,9 @@
 <Window x:Class="SerialTool.App.HostKeyConfirmWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:s="clr-namespace:SerialTool.App.Services"
         Title="主机指纹确认" SizeToContent="WidthAndHeight"
-        Background="{StaticResource BgBrush}" WindowStartupLocation="CenterOwner"
+        Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}" WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" ShowInTaskbar="False">
 
     <!-- SSH 首次连接 TOFU / 指纹变更警告（同步模态：连接挂起等待用户裁决） -->

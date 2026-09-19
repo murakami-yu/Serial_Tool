@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using SerialTool.App.Services;
 using XTerm;
 using XTerm.Options;
 using XCursorStyle = XTerm.Common.CursorStyle;
@@ -78,7 +79,7 @@ public class TerminalView : FrameworkElement
             Rows = 24,
             Scrollback = 5000,
             CursorBlink = true,
-            Theme = TerminalTheme,
+            Theme = BuildTheme(),
         });
         _terminal.DataReceived += (_, e) => InputEmitted?.Invoke(Encoding.UTF8.GetBytes(e.Data));
         _terminal.TitleChanged += (_, _) => TitleChanged?.Invoke();
@@ -408,14 +409,32 @@ public class TerminalView : FrameworkElement
 
     // ---------- 颜色 ----------
 
-    /// <summary>终端背景色（与主题 Background 一致；宿主边框、遮罩同步用此色）。</summary>
-    public static readonly Color ThemeBackground = Color.FromRgb(0x1E, 0x1E, 0x1E);
+    /// <summary>终端背景色（与主题 Background 一致；宿主边框、遮罩同步用此色）。
+    /// 读外观设置单例（默认 #1E1E1E），每次访问取当前值——改色后新建/更新即用新值。</summary>
+    public static Color ThemeBackground => ParseHexOrDefault(Appearance.Instance.TermContentBgHex);
 
-    /// <summary>终端主题：Campbell 调色板（Windows Terminal 默认）+ VS Code 式柔和深底。
-    /// 仅引擎默认色——对端 OSC 10/11/104 仍可运行时改写。</summary>
-    private static readonly ThemeOptions TerminalTheme = new()
+    /// <summary>HEX → Color；非法值回退终端默认深底（手改配置文件兜底）。</summary>
+    private static Color ParseHexOrDefault(string hex)
     {
-        Background = "#1E1E1E",
+        try { return (Color)ColorConverter.ConvertFromString(hex); }
+        catch { return Color.FromRgb(0x1E, 0x1E, 0x1E); }
+    }
+
+    /// <summary>外观设置改终端底色时调用：引擎默认背景运行时可改（SetBackground 即 OSC 11 同路径），
+    /// 画刷缓存整清 + 全量重绘（OnRender 每帧读 Colors.Background，无需其他干预）。</summary>
+    public void SetContentBackground(Color c)
+    {
+        _terminal.Colors.SetBackground((c.R << 16) | (c.G << 8) | c.B);
+        _brushCache.Clear();
+        InvalidateVisual();
+    }
+
+    /// <summary>终端主题：Campbell 调色板（Windows Terminal 默认）+ 外观设置的内容底色
+    /// （默认 VS Code 式柔和深底 #1E1E1E）。每实例新建——背景色取自外观设置单例，
+    /// 静态共享会被「后建实例改色」牵连。仅引擎默认色——对端 OSC 10/11/104 仍可运行时改写。</summary>
+    private static ThemeOptions BuildTheme() => new()
+    {
+        Background = Appearance.Instance.TermContentBgHex,
         Foreground = "#D4D4D4",
         Cursor = "#AEAFAD",
         Selection = "#264F78",

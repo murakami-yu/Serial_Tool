@@ -3,10 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:SerialTool.App.ViewModels"
         xmlns:ctrl="clr-namespace:SerialTool.App.Controls"
+        xmlns:s="clr-namespace:SerialTool.App.Services"
         Title="Serial Tool — 通用串口调试工具"
         Width="1290" Height="740" MinWidth="1290" MinHeight="660"
         SizeChanged="MainWindow_SizeChanged"
-        Background="{StaticResource BgBrush}"
+        Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}"
         WindowStartupLocation="CenterScreen">
     <Window.DataContext>
         <vm:MainViewModel/>
@@ -627,6 +628,12 @@
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                 Margin="0,10,0,0" Padding="0,6,0,0">
             <DockPanel>
+                <!-- 外观设置入口：状态栏左侧（顶条已贴近 1290 宽度上限，不加控件）；
+                     MinHeight=0 压掉全局按钮样式的 28px 基线，状态栏保持单行高 -->
+                <Button DockPanel.Dock="Left" Content="外观…" Click="Appearance_Click"
+                        MinWidth="0" MinHeight="0" Padding="10,1" Margin="0,0,12,0"
+                        VerticalAlignment="Center"
+                        ToolTip="设置各界面背景色（主窗/终端/波形/模板编辑器/终端内容，即时生效并保存）"/>
                 <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center"
                            Foreground="{StaticResource MutedBrush}">
                     <Run Text="RX: "/><Run Text="{Binding RxCount, Mode=OneWay}"/>
