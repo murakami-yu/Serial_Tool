@@ -23,25 +23,25 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="名称" VerticalAlignment="Center"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
             <TextBox x:Name="NameBox" Grid.Row="0" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
                      ToolTip="保存到会话列表时使用的显示名（留空则用 user@host）"/>
 
             <TextBlock Grid.Row="1" Grid.Column="0" Text="主机" VerticalAlignment="Center"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
             <DockPanel Grid.Row="1" Grid.Column="1" Margin="12,4,0,4">
                 <TextBox x:Name="PortBox" DockPanel.Dock="Right" Width="56" VerticalAlignment="Center"/>
                 <TextBlock DockPanel.Dock="Right" Text="端口" Margin="0,0,6,0" VerticalAlignment="Center"
-                           Foreground="{StaticResource MutedBrush}"/>
+                           Foreground="{DynamicResource MutedBrush}"/>
                 <TextBox x:Name="HostBox" VerticalAlignment="Center" MinWidth="150"/>
             </DockPanel>
 
             <TextBlock Grid.Row="2" Grid.Column="0" Text="用户名" VerticalAlignment="Center"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
             <TextBox x:Name="UserBox" Grid.Row="2" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"/>
 
             <TextBlock Grid.Row="3" Grid.Column="0" Text="认证" VerticalAlignment="Center"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
             <DockPanel Grid.Row="3" Grid.Column="1" Margin="12,4,0,4">
                 <ComboBox x:Name="AuthBox" DockPanel.Dock="Right" Width="76" VerticalAlignment="Center"
                           SelectionChanged="AuthBox_SelectionChanged">
@@ -54,10 +54,10 @@
 
         <!-- 私钥明细（认证=私钥时显示） -->
         <DockPanel x:Name="KeyPanel" Margin="0,6,0,0" Visibility="Collapsed">
-            <TextBlock Text="私钥" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+            <TextBlock Text="私钥" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <TextBlock Text="口令" VerticalAlignment="Center" Margin="10,0,0,0"
-                           Foreground="{StaticResource MutedBrush}"/>
+                           Foreground="{DynamicResource MutedBrush}"/>
                 <PasswordBox x:Name="KeyPassBox" Width="86" Margin="4,0,0,0" VerticalAlignment="Center"
                              ToolTip="私钥口令（无口令可留空，不落盘）"/>
             </StackPanel>

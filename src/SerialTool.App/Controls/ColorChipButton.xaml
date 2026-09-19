@@ -7,13 +7,13 @@
         <ToggleButton x:Name="Toggle" Cursor="Hand" VerticalAlignment="Center">
             <ToggleButton.Template>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="Bd" CornerRadius="4" Background="#F0F0F0"
-                            BorderBrush="#ADADAD" BorderThickness="1" Padding="7,3"
+                    <Border x:Name="Bd" CornerRadius="4" Background="{DynamicResource ButtonBgBrush}"
+                            BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1" Padding="7,3"
                             SnapsToDevicePixels="True">
                         <StackPanel Orientation="Horizontal">
                             <!-- 当前色块：绑 UserControl 的 Hex，经转换器取刷子 -->
                             <Border Width="14" Height="14" CornerRadius="3"
-                                    BorderBrush="#ADADAD" BorderThickness="1"
+                                    BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1"
                                     Background="{Binding Hex, RelativeSource={RelativeSource AncestorType=local:ColorChipButton},
                                                 Converter={StaticResource HexToBrush}}"/>
                             <TextBlock Text="{Binding Label, RelativeSource={RelativeSource AncestorType=local:ColorChipButton}}"
@@ -22,11 +22,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#CCE4F7"/>
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                             <Setter TargetName="Bd" Property="BorderThickness" Value="1.5"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -39,8 +39,8 @@
         <Popup IsOpen="{Binding IsChecked, ElementName=Toggle, Mode=TwoWay}" StaysOpen="False"
                PlacementTarget="{Binding ElementName=Toggle}" Placement="Bottom"
                AllowsTransparency="True" PopupAnimation="Fade" Focusable="False">
-            <Border CornerRadius="4" Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            <Border CornerRadius="4" Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     Margin="0,4,0,4" SnapsToDevicePixels="True">
                 <Border.Effect>
                     <DropShadowEffect Color="#000000" Opacity="0.18" BlurRadius="8" ShadowDepth="2"/>
@@ -58,7 +58,7 @@
                                 <Button Width="20" Height="20" MinWidth="0" MinHeight="0"
                                         Padding="0" Margin="1" Cursor="Hand"
                                         Background="{Binding Converter={StaticResource HexToBrush}}"
-                                        BorderBrush="#ADADAD" BorderThickness="1"
+                                        BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1"
                                         ToolTip="{Binding}"
                                         CommandParameter="{Binding}" Click="Swatch_Click"/>
                             </DataTemplate>

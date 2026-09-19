@@ -18,16 +18,16 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="名称" VerticalAlignment="Center"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
             <TextBox x:Name="NameBox" Grid.Row="0" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
                      ToolTip="保存到会话列表时使用的显示名（留空则用 host:port）"/>
 
             <TextBlock Grid.Row="1" Grid.Column="0" Text="主机" VerticalAlignment="Center"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
             <DockPanel Grid.Row="1" Grid.Column="1" Margin="12,4,0,4">
                 <TextBox x:Name="PortBox" DockPanel.Dock="Right" Width="56" VerticalAlignment="Center"/>
                 <TextBlock DockPanel.Dock="Right" Text="端口" Margin="0,0,6,0" VerticalAlignment="Center"
-                           Foreground="{StaticResource MutedBrush}"/>
+                           Foreground="{DynamicResource MutedBrush}"/>
                 <TextBox x:Name="HostBox" VerticalAlignment="Center" MinWidth="120"/>
             </DockPanel>
         </Grid>

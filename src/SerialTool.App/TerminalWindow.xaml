@@ -36,7 +36,7 @@
                       DisplayMemberPath="Name" VerticalAlignment="Center"
                       ToolTip="已保存的会话（Config/terminal_sessions.json）"/>
             <TextBlock Text="关标签即断开该会话；主连接请回主面板断开"
-                       Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
+                       Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
                        TextAlignment="Right" TextTrimming="CharacterEllipsis"/>
         </DockPanel>
 

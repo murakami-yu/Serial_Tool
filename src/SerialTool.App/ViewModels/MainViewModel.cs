@@ -1239,7 +1239,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string TerminalBg = Services.Appearance.DefaultTerminalBg,
         string ChartBg = Services.Appearance.DefaultChartBg,
         string TemplateBg = Services.Appearance.DefaultTemplateBg,
-        string TermContentBg = Services.Appearance.DefaultTermContentBg);
+        string TermContentBg = Services.Appearance.DefaultTermContentBg,
+        string Panel = Services.Appearance.DefaultPanel,
+        string ButtonBg = Services.Appearance.DefaultButtonBg,
+        string Border = Services.Appearance.DefaultBorder,
+        string Text = Services.Appearance.DefaultText,
+        string Muted = Services.Appearance.DefaultMuted,
+        string Accent = Services.Appearance.DefaultAccent,
+        string Hover = Services.Appearance.DefaultHover,
+        string Selected = Services.Appearance.DefaultSelected);
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -1278,6 +1286,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (s.ChartBg is { } cb && IsValidHex(cb)) ap.ChartBgHex = cb;
                     if (s.TemplateBg is { } pb && IsValidHex(pb)) ap.TemplateBgHex = pb;
                     if (s.TermContentBg is { } eb && IsValidHex(eb)) ap.TermContentBgHex = eb;
+                    // 控件级配色（全局）
+                    if (s.Panel is { } pc && IsValidHex(pc)) ap.PanelHex = pc;
+                    if (s.ButtonBg is { } bb && IsValidHex(bb)) ap.ButtonBgHex = bb;
+                    if (s.Border is { } bc && IsValidHex(bc)) ap.BorderHex = bc;
+                    if (s.Text is { } tx && IsValidHex(tx)) ap.TextHex = tx;
+                    if (s.Muted is { } mu && IsValidHex(mu)) ap.MutedHex = mu;
+                    if (s.Accent is { } ac && IsValidHex(ac)) ap.AccentHex = ac;
+                    if (s.Hover is { } hv && IsValidHex(hv)) ap.HoverHex = hv;
+                    if (s.Selected is { } se && IsValidHex(se)) ap.SelectedHex = se;
                 }
             }
         }
@@ -1297,7 +1314,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 new UiSettings(ShowFramesPanel, ShowWavePanel, WaveFollow, TxColorHex, RxColorHex, BaudText,
                     TxCyclic, TxPeriodMs, ShowTerminalPanel,
                     SshHost, SshPort, SshUser, SshAuthIndex, SshKeyPath,
-                    ap.MainBgHex, ap.TerminalBgHex, ap.ChartBgHex, ap.TemplateBgHex, ap.TermContentBgHex),
+                    ap.MainBgHex, ap.TerminalBgHex, ap.ChartBgHex, ap.TemplateBgHex, ap.TermContentBgHex,
+                    ap.PanelHex, ap.ButtonBgHex, ap.BorderHex, ap.TextHex, ap.MutedHex, ap.AccentHex,
+                    ap.HoverHex, ap.SelectedHex),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch

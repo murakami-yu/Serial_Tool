@@ -136,11 +136,12 @@ public partial class TerminalWindow : Window
         {
             CornerRadius = new CornerRadius(6),
             Background = new SolidColorBrush(Controls.TerminalView.ThemeBackground),
-            BorderBrush = TryFindResource("BorderBrush") as Brush,
             BorderThickness = new Thickness(1),
             ClipToBounds = true,
             Child = view,
         };
+        // 主题边框画刷会被外观设置整实例替换：动态引用（而非 TryFindResource 一次性取值），改色实时跟随
+        host.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

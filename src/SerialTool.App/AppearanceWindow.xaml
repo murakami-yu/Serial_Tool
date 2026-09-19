@@ -8,11 +8,11 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" ShowInTaskbar="False">
 
-    <!-- 各界面背景色集中设置：ColorChipButton 双向绑定 Appearance 单例（改色即时生效，
+    <!-- 外观集中设置：ColorChipButton 双向绑定 Appearance 单例（改色即时生效，
          MainViewModel 订阅单例变化即落盘 ui_settings.json）；每项弹层内自带「恢复默认」 -->
     <StackPanel Margin="16" Width="320">
         <TextBlock Text="各界面背景色（改色即时生效，自动保存）："
-                   Foreground="{StaticResource MutedBrush}"/>
+                   Foreground="{DynamicResource MutedBrush}"/>
         <StackPanel Margin="0,10,0,0">
             <ctrl:ColorChipButton HorizontalAlignment="Left" Label="主窗口（含对话框）"
                                   Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex}"
@@ -35,8 +35,44 @@
                                   DefaultHex="#1E1E1E"
                                   ToolTip="终端字符区的背景色（已打开的标签页同步生效；ANSI 调色板不变）"/>
         </StackPanel>
-        <TextBlock Text="说明：仅背景色可配，面板/文字/边框色保持浅色主题体系；&#x0a;终端内容换浅色时默认文字色（浅灰）不变，建议终端底色选深色。"
-                   Foreground="{StaticResource MutedBrush}" FontSize="12"
+        <TextBlock Text="控件颜色（全局，改色即时生效，自动保存）："
+                   Foreground="{DynamicResource MutedBrush}" Margin="0,14,0,0"/>
+        <StackPanel Margin="0,10,0,0">
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="面板/显示框底色"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=PanelHex}"
+                                  DefaultHex="#FFFFFF"
+                                  ToolTip="输入框/下拉框/接收显示框/勾选框方框/分组卡片的底色"/>
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="按钮底色" Margin="0,8,0,0"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=ButtonBgHex}"
+                                  DefaultHex="#F0F0F0"
+                                  ToolTip="全部按钮（点击框）的默认底色"/>
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="边框色" Margin="0,8,0,0"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=BorderHex}"
+                                  DefaultHex="#C9C9C9"
+                                  ToolTip="控件边框色；自动派生加深控件边框、调亮分隔线与滚动条滑块"/>
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="正文文字" Margin="0,8,0,0"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=TextHex}"
+                                  DefaultHex="#1E1E1E"
+                                  ToolTip="正文/按钮文字/输入文字颜色"/>
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="次要文字" Margin="0,8,0,0"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=MutedHex}"
+                                  DefaultHex="#5A5A5A"
+                                  ToolTip="弱化文字（分组标题/表头/说明文字）"/>
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="强调色" Margin="0,8,0,0"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=AccentHex}"
+                                  DefaultHex="#0078D7"
+                                  ToolTip="聚焦边框/勾选框勾选底/下拉展开边"/>
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="悬停高亮" Margin="0,8,0,0"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=HoverHex}"
+                                  DefaultHex="#CCE4F7"
+                                  ToolTip="鼠标悬停高亮（按钮/下拉项/页签）"/>
+            <ctrl:ColorChipButton HorizontalAlignment="Left" Label="选中/按下" Margin="0,8,0,0"
+                                  Hex="{Binding Source={x:Static s:Appearance.Instance}, Path=SelectedHex}"
+                                  DefaultHex="#B3D4F0"
+                                  ToolTip="按钮按下底色/下拉选中项/文本选择色"/>
+        </StackPanel>
+        <TextBlock Text="说明：边框色会自动派生控件边框（加深）与分隔线（调亮）；&#x0a;面板改深色时请自行搭配文字色；终端内容换浅色时默认文字色&#x0a;（浅灰）不变，建议终端底色选深色。"
+                   Foreground="{DynamicResource MutedBrush}" FontSize="12"
                    TextWrapping="Wrap" Margin="0,12,0,0"/>
         <Button Content="关闭" IsCancel="True" Width="70" HorizontalAlignment="Right" Margin="0,12,0,0"/>
     </StackPanel>

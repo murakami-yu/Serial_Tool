@@ -6,7 +6,7 @@
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}" WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" ShowInTaskbar="False">
     <StackPanel Margin="16" Width="260">
-        <TextBlock Text="波特率（正整数，如 748800）：" Foreground="{StaticResource MutedBrush}"/>
+        <TextBlock Text="波特率（正整数，如 748800）：" Foreground="{DynamicResource MutedBrush}"/>
         <TextBox x:Name="Input" Margin="0,6,0,0"/>
         <TextBlock x:Name="Err" Foreground="#C00000" Margin="0,4,0,0" Visibility="Collapsed"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

@@ -15,8 +15,8 @@
     <Grid Margin="12">
         <!-- 图表：时序图 / 字段曲线 两页（内容与原主窗内嵌面板一致）。
              裁切兜底：内容最小高度之和若超出本框（极端缩放），在框内裁切而非越界 -->
-        <GroupBox Header="图表（时序 / 字段曲线）" BorderBrush="{StaticResource BorderBrush}"
-                  Foreground="{StaticResource MutedBrush}" ClipToBounds="True">
+        <GroupBox Header="图表（时序 / 字段曲线）" BorderBrush="{DynamicResource BorderBrush}"
+                  Foreground="{DynamicResource MutedBrush}" ClipToBounds="True">
             <TabControl x:Name="MainTab" Margin="4" Background="Transparent">
                 <TabControl.Template>
                     <!-- 自定义模板：页签行 = TabPanel + 「？」帮助按钮水平排开——按钮是页签的**平级**元素
@@ -42,17 +42,17 @@
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bd" CornerRadius="10"
-                                                    Background="#F0F0F0" BorderBrush="#ADADAD" BorderThickness="1.5"
+                                                    Background="{DynamicResource ButtonBgBrush}" BorderBrush="{DynamicResource ControlBorderBrush}" BorderThickness="1.5"
                                                     SnapsToDevicePixels="True">
                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                                    <Setter TargetName="Bd" Property="Background" Value="#CCE4F7"/>
+                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
                                                 </Trigger>
                                                 <Trigger Property="IsPressed" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="#B3D4F0"/>
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBrush}"/>
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -71,15 +71,15 @@
                                       ToolTip="勾选：视图自动锁定最近 30 秒；取消后可自由缩放平移"/>
                             <TextBlock Text="蓝=RX 橙=TX 逐位方波(起始位+8数据位+停止位) 按波特率重建  跟随窗口100ms 滚轮缩放·拖动平移"
                                        Margin="16,0,0,0" VerticalAlignment="Center"
-                                       Foreground="{StaticResource MutedBrush}"/>
+                                       Foreground="{DynamicResource MutedBrush}"/>
                         </StackPanel>
                         <!-- 图表画布：白色圆角卡片（ScottPlot 背景置透明，白底与圆角由本 Border 提供）。
                              MinHeight=200 是方波可读性地板（RX/TX 双电平带 + 轴刻度），
                              经 CalibrateMinSize 折算进窗口最小高：窗口缩到最小方波也不会被压扁。
                              注意本 Border 必须是 DockPanel 最后一个子元素（填充剩余空间）——
                              曾因 Popup 放在它后面接管填充位而被挤成 0 宽（见窗口根 Grid 里 Popup 注释） -->
-                        <Border x:Name="WaveHost" CornerRadius="6" Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        <Border x:Name="WaveHost" CornerRadius="6" Background="{DynamicResource PanelBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                 SnapsToDevicePixels="True">
                             <sp:WpfPlot x:Name="WavePlot" MinHeight="200" Background="Transparent"/>
                         </Border>
@@ -100,14 +100,14 @@
                                       ToolTip="勾选：视图自动锁定最近 60 秒；取消后可自由缩放平移"/>
                             <TextBlock Text="需开启「帧解析」，按曲线配置从帧数据域取值  滚轮缩放·拖动平移"
                                        Margin="16,0,16,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                       Foreground="{StaticResource MutedBrush}"/>
+                                       Foreground="{DynamicResource MutedBrush}"/>
                         </DockPanel>
 
                         <!-- 配置表：底部固定 96px（表头 + 两行，宽表可横向滚动），高度恒定不参与压缩；
                              圆角卡片与多帧/自动应答表格同款。曲线画布的 MinHeight 保证缩放时图形始终可读 -->
                         <Border DockPanel.Dock="Bottom" Height="96" Margin="0,6,0,0"
-                                CornerRadius="6" Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="6" Background="{DynamicResource PanelBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                 SnapsToDevicePixels="True">
                             <DataGrid ItemsSource="{Binding FieldPlots}"
                                       SelectedItem="{Binding SelectedPlot}"
@@ -134,7 +134,7 @@
                                         <DataTemplate>
                                             <TextBox Text="{Binding Template, UpdateSourceTrigger=PropertyChanged}"
                                                      Padding="4,2" Margin="2" VerticalAlignment="Center"
-                                                     Foreground="{StaticResource MutedBrush}"
+                                                     Foreground="{DynamicResource MutedBrush}"
                                                      ToolTip="限定来源模板名，空 = 任意模板"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -212,8 +212,8 @@
                         <!-- 曲线画布：白色圆角卡片（同左页时序图）。
                              MinHeight=200 是曲线可读性地板；本 Border 必须是 DockPanel 最后一个子元素
                              （填充剩余空间）——曾因 Popup 放在它后面接管填充位而被挤成 0 宽（见根 Grid Popup 注释） -->
-                        <Border x:Name="FieldHost" CornerRadius="6" Background="{StaticResource PanelBrush}"
-                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        <Border x:Name="FieldHost" CornerRadius="6" Background="{DynamicResource PanelBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                 SnapsToDevicePixels="True">
                             <sp:WpfPlot x:Name="FieldPlotCtl" MinHeight="200" Background="Transparent"/>
                         </Border>
@@ -230,10 +230,10 @@
         <Popup x:Name="FieldPlotHelpPopup"
                Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
                PopupAnimation="Fade">
-            <Border CornerRadius="6" Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            <Border CornerRadius="6" Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     Padding="14,10" MaxWidth="440" Margin="12"
-                    TextElement.Foreground="{StaticResource TextBrush}">
+                    TextElement.Foreground="{DynamicResource TextBrush}">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.18"/>
                 </Border.Effect>

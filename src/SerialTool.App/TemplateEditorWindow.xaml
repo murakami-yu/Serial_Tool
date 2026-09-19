@@ -35,7 +35,7 @@
         </Grid.RowDefinitions>
 
         <!-- 左：模板列表 + 启用状态 -->
-        <GroupBox Grid.Row="0" Grid.Column="0" Header="模板列表（●=启用解析）" BorderBrush="{StaticResource BorderBrush}">
+        <GroupBox Grid.Row="0" Grid.Column="0" Header="模板列表（●=启用解析）" BorderBrush="{DynamicResource BorderBrush}">
             <DockPanel Margin="4">
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
                     <Button Content="新增" Click="OnAdd"/>
@@ -43,13 +43,13 @@
                 </StackPanel>
                 <ListBox x:Name="List" ItemsSource="{Binding Templates}"
                          SelectedItem="{Binding SelectedTemplate}"
-                         Background="{StaticResource PanelBrush}"
-                         BorderBrush="{StaticResource BorderBrush}">
+                         Background="{DynamicResource PanelBrush}"
+                         BorderBrush="{DynamicResource BorderBrush}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{Binding Enabled, Converter={StaticResource BoolToDot}}"
-                                           Foreground="{StaticResource AccentBrush}" FontWeight="Bold"/>
+                                           Foreground="{DynamicResource AccentBrush}" FontWeight="Bold"/>
                                 <TextBlock Text="{Binding Name}" Margin="6,0,0,0"/>
                             </StackPanel>
                         </DataTemplate>
@@ -60,7 +60,7 @@
 
         <!-- 右：模板字段（不要包外层 ScrollViewer：DataGrid 嵌套滚动容器会表头错位） -->
         <GroupBox Grid.Row="0" Grid.Column="2" Header="模板字段"
-                  BorderBrush="{StaticResource BorderBrush}">
+                  BorderBrush="{DynamicResource BorderBrush}">
             <StackPanel Margin="4">
 
                     <Grid>
@@ -70,7 +70,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="名称" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="名称" Foreground="{DynamicResource MutedBrush}"/>
                             <TextBox Text="{Binding SelectedTemplate.Name, UpdateSourceTrigger=PropertyChanged}" LostFocus="OnFieldChanged"/>
                         </StackPanel>
                         <StackPanel Grid.Column="2" Margin="0,18,0,0" VerticalAlignment="Top">
@@ -85,11 +85,11 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="帧头（HEX，如 01 或 AA 55）" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="帧头（HEX，如 01 或 AA 55）" Foreground="{DynamicResource MutedBrush}"/>
                             <TextBox Text="{Binding SelectedTemplate.Header, UpdateSourceTrigger=PropertyChanged}" LostFocus="OnFieldChanged"/>
                         </StackPanel>
                         <StackPanel Grid.Column="2">
-                            <TextBlock Text="帧尾（HEX，可空；帧尾扫描模式必填）" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="帧尾（HEX，可空；帧尾扫描模式必填）" Foreground="{DynamicResource MutedBrush}"/>
                             <TextBox Text="{Binding SelectedTemplate.Footer, UpdateSourceTrigger=PropertyChanged}" LostFocus="OnFieldChanged"/>
                         </StackPanel>
                     </Grid>
@@ -103,19 +103,19 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="校验算法" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="校验算法" Foreground="{DynamicResource MutedBrush}"/>
                             <ComboBox ItemsSource="{StaticResource ChecksumNames}"
                                       SelectedItem="{Binding SelectedTemplate.Checksum}"/>
                         </StackPanel>
                         <StackPanel Grid.Column="2">
-                            <TextBlock Text="校验字节序" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="校验字节序" Foreground="{DynamicResource MutedBrush}"/>
                             <ComboBox SelectedIndex="{Binding SelectedTemplate.ChecksumBigEndian, Converter={StaticResource BoolToIndex}}" LostFocus="OnFieldChanged">
                                 <ComboBoxItem Content="高字节在前 (CRCh CRCl)"/>
                                 <ComboBoxItem Content="低字节在前 (Modbus 标准)"/>
                             </ComboBox>
                         </StackPanel>
                         <StackPanel Grid.Column="4">
-                            <TextBlock Text="帧长上限" Foreground="{StaticResource MutedBrush}"/>
+                            <TextBlock Text="帧长上限" Foreground="{DynamicResource MutedBrush}"/>
                             <TextBox Width="70" Height="28" Padding="6,0"
                                      Text="{Binding SelectedTemplate.MaxFrameLength, UpdateSourceTrigger=PropertyChanged}" LostFocus="OnFieldChanged"/>
                         </StackPanel>
@@ -123,13 +123,13 @@
 
                     <!-- 字段链 -->
                     <TextBlock Text="字段链（帧头之后 → 校验之前，按序；长度域可放任意位置）"
-                               Foreground="{StaticResource MutedBrush}" Margin="0,10,0,4"/>
+                               Foreground="{DynamicResource MutedBrush}" Margin="0,10,0,4"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <Button Content="加字段" Click="OnAddField" Padding="8,2" MinWidth="64"/>
                         <Button Content="删字段" Click="OnDeleteField" Margin="8,0,0,0" Padding="8,2" MinWidth="64"/>
                     </StackPanel>
-                    <Border CornerRadius="6" Background="{StaticResource PanelBrush}"
-                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    <Border CornerRadius="6" Background="{DynamicResource PanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                         <DataGrid x:Name="FieldsGrid" ItemsSource="{Binding SelectedTemplate.Fields}"
                                   Background="Transparent" BorderThickness="0"
                                   GridLinesVisibility="None" AutoGenerateColumns="False"
