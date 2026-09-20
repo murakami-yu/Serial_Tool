@@ -12,6 +12,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // 崩溃/卡死诊断最先装：挂起看门狗 + 全局异常 → Logs/crash/（.log + .dmp 自转储）
+        Services.CrashLogger.Install();
         // 控件级配色：外观单例属性变化 → 替换 App.xaml 主题画刷实例，DynamicResource 引用实时级联。
         // 不能用「StaticResource 共享实例 + 突变 Color」：样式/模板密封时会冻结引用到的画刷实例，
         // 突变冻结画刷抛 InvalidOperationException（曾在 LoadUiSettings 的 catch 里被静默吞掉，改色全无效）。

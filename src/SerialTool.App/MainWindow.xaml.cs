@@ -515,6 +515,18 @@ public partial class MainWindow : Window
         win.ShowDialog();
     }
 
+    /// <summary>崩溃日志自检（隐藏组合键，用于在新机器上验证 Logs/crash 链路，非故障）：
+    /// Ctrl+Alt+F12 = 抛测试异常（走 UI 未处理异常 → .log + .dmp 后按默认崩溃流程退出）；
+    /// Ctrl+Alt+Shift+F12 = UI 线程睡眠 20s（走挂起看门狗 → .log + .dmp，随后恢复并追记一行）。</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Key == Key.F12 && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Alt))
+            throw new InvalidOperationException("崩溃日志自检测试（Ctrl+Alt+F12 手动触发，非真实故障）");
+        if (e.Key == Key.F12 && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift))
+            System.Threading.Thread.Sleep(20_000);
+    }
+
     // ---------- 发送区 ----------
 
     /// <summary>Enter 发送（Shift+Enter 换行）。</summary>
