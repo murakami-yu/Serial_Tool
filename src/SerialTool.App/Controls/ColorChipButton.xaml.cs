@@ -1,6 +1,9 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
 
 namespace SerialTool.App.Controls;
 
@@ -64,5 +67,88 @@ public partial class ColorChipButton : UserControl
     {
         Hex = DefaultHex;
         Toggle.IsChecked = false;
+    }
+
+    // ---------- 自定义色输入（HEX ⇄ RGB 双向联动，应用即写回 Hex 实时生效） ----------
+
+    /// <summary>联动更新期间置位，防 HEX→RGB→HEX 回环。</summary>
+    private bool _syncing;
+
+    /// <summary>弹层每次打开按当前 Hex 重置输入区（预设/微调可能已在外部改色）。</summary>
+    private void PalettePopup_Opened(object? sender, System.EventArgs e) => SyncFromHex(Hex);
+
+    private void SyncFromHex(string hex)
+    {
+        _syncing = true;
+        try
+        {
+            HexBox.Text = hex?.TrimStart('#') ?? "";
+            if (TryParseHex(hex, out var c))
+            {
+                RBox.Text = c.R.ToString();
+                GBox.Text = c.G.ToString();
+                BBox.Text = c.B.ToString();
+                PreviewBox.Background = new SolidColorBrush(c);
+            }
+        }
+        finally { _syncing = false; }
+    }
+
+    /// <summary>接受 RRGGBB 或 #RRGGBB（大小写不敏感）。</summary>
+    private static bool TryParseHex(string? s, out Color c)
+    {
+        c = default;
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        s = s.Trim().TrimStart('#');
+        if (s.Length != 6 || !int.TryParse(s, NumberStyles.HexNumber, null, out var v)) return false;
+        c = Color.FromRgb((byte)(v >> 16), (byte)(v >> 8), (byte)v);
+        return true;
+    }
+
+    private void HexBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_syncing) return;
+        if (!TryParseHex(HexBox.Text, out var c)) return;
+        _syncing = true;
+        try
+        {
+            RBox.Text = c.R.ToString();
+            GBox.Text = c.G.ToString();
+            BBox.Text = c.B.ToString();
+            PreviewBox.Background = new SolidColorBrush(c);
+        }
+        finally { _syncing = false; }
+    }
+
+    private void RgbBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_syncing) return;
+        if (!TryReadChannel(RBox.Text, out var r) || !TryReadChannel(GBox.Text, out var g) ||
+            !TryReadChannel(BBox.Text, out var b)) return;
+        var c = Color.FromRgb(r, g, b);
+        _syncing = true;
+        try
+        {
+            HexBox.Text = $"{c.R:X2}{c.G:X2}{c.B:X2}";
+            PreviewBox.Background = new SolidColorBrush(c);
+        }
+        finally { _syncing = false; }
+    }
+
+    private static bool TryReadChannel(string? s, out byte v)
+        => byte.TryParse(s, out v);   // byte 上限 255，天然截断超界
+
+    /// <summary>应用自定义色（保持弹层打开，可继续微调）；HEX 框内 Enter 等同。</summary>
+    private void ApplyCustom_Click(object sender, RoutedEventArgs e) => ApplyCustom();
+
+    private void HexBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { ApplyCustom(); e.Handled = true; }
+    }
+
+    private void ApplyCustom()
+    {
+        if (TryParseHex(HexBox.Text, out var c))
+            Hex = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
     }
 }

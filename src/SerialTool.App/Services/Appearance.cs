@@ -80,4 +80,52 @@ public sealed partial class Appearance : ObservableObject
     private string _selectedHex = DefaultSelected;
 
     private Appearance() { }
+
+    // ---------- 预设主题（整套 13 项打包；选中态不落盘，由 MatchPreset 按当前值反推） ----------
+
+    /// <summary>内置预设主题。经典浅色引用默认色常量（单一事实源）。</summary>
+    public static AppearancePreset[] Presets { get; } =
+    {
+        new("经典浅色", DefaultMainBg, DefaultTerminalBg, DefaultChartBg, DefaultTemplateBg, DefaultTermContentBg,
+            DefaultPanel, DefaultButtonBg, DefaultBorder, DefaultText, DefaultMuted, DefaultAccent,
+            DefaultHover, DefaultSelected),
+        new("深色夜间", "#2B2B2B", "#2B2B2B", "#2B2B2B", "#2B2B2B", "#1E1E1E",
+            "#2D2D30", "#3E3E42", "#3F3F46", "#E8E8E8", "#9D9DA3", "#0078D7", "#3A4756", "#264F78"),
+        new("护眼绿", "#E8F3E8", "#E8F3E8", "#E8F3E8", "#E8F3E8", "#1E1E1E",
+            "#F2FAF2", "#DCEDDC", "#9CC5A0", "#1E3A1E", "#5A7A5A", "#2E9E5B", "#D0EBD0", "#B8E0B8"),
+        new("高对比", "#000000", "#000000", "#000000", "#000000", "#000000",
+            "#000000", "#1A1A1A", "#FFFFFF", "#FFFFFF", "#C0C0C0", "#0090FF", "#1F3A52", "#005A9E"),
+    };
+
+    /// <summary>整套应用预设：逐属性写入（相等值源生成器自动跳过通知），各订阅方实时级联。</summary>
+    public void ApplyPreset(AppearancePreset p)
+    {
+        MainBgHex = p.MainBg; TerminalBgHex = p.TerminalBg; ChartBgHex = p.ChartBg;
+        TemplateBgHex = p.TemplateBg; TermContentBgHex = p.TermContentBg;
+        PanelHex = p.Panel; ButtonBgHex = p.ButtonBg; BorderHex = p.Border;
+        TextHex = p.Text; MutedHex = p.Muted; AccentHex = p.Accent;
+        HoverHex = p.Hover; SelectedHex = p.Selected;
+    }
+
+    /// <summary>当前 13 值与某预设全等（大小写不敏感）则返回该预设，否则 null（= 自定义）。</summary>
+    public AppearancePreset? MatchPreset()
+    {
+        foreach (var p in Presets)
+            if (Eq(MainBgHex, p.MainBg) && Eq(TerminalBgHex, p.TerminalBg) && Eq(ChartBgHex, p.ChartBg) &&
+                Eq(TemplateBgHex, p.TemplateBg) && Eq(TermContentBgHex, p.TermContentBg) &&
+                Eq(PanelHex, p.Panel) && Eq(ButtonBgHex, p.ButtonBg) && Eq(BorderHex, p.Border) &&
+                Eq(TextHex, p.Text) && Eq(MutedHex, p.Muted) && Eq(AccentHex, p.Accent) &&
+                Eq(HoverHex, p.Hover) && Eq(SelectedHex, p.Selected))
+                return p;
+        return null;
+
+        static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
 }
+
+/// <summary>外观预设主题：13 项色值整套打包（4 窗口背景 + 终端内容底色 + 8 控件色）。</summary>
+public sealed record AppearancePreset(
+    string Name,
+    string MainBg, string TerminalBg, string ChartBg, string TemplateBg, string TermContentBg,
+    string Panel, string ButtonBg, string Border, string Text, string Muted, string Accent,
+    string Hover, string Selected);
