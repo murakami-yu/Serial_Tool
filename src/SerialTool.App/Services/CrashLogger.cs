@@ -131,14 +131,16 @@ public static class CrashLogger
         finally { Volatile.Write(ref _dumpInFlight, 0); }
     }
 
-    /// <summary>自转储（MiniDumpNormal + 间接引用内存：含全线程栈，体积数 MB 级）。失败只追加日志不抛。</summary>
+    /// <summary>自转储（托管可分析套装：数据段+线程信息+句柄+间接引用内存——CLR 发现依赖模块数据段，
+    /// 2026-09-21 Win10 挂起 dump 因缺数据段导致 dotnet-dump/ClrMD 均找不到 CLR 的教训；体积仍数 MB 级）。
+    /// 失败只追加日志不抛。</summary>
     private static void TryWriteDump(string dmpPath)
     {
         try
         {
             using var fs = new FileStream(dmpPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            // MiniDumpNormal | MiniDumpWithIndirectlyReferencedMemory
-            const uint dumpType = 0x00000000 | 0x00000040;
+            // WithDataSegs | WithHandleData | WithUnloadedModules | WithIndirectlyReferencedMemory | WithProcessThreadData | WithThreadInfo
+            const uint dumpType = 0x00000001 | 0x00000004 | 0x00000020 | 0x00000040 | 0x00000100 | 0x00001000;
             var ok = MiniDumpWriteDump(Process.GetCurrentProcess().Handle, (uint)Environment.ProcessId,
                 fs.SafeFileHandle, dumpType, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             AppendLine(LastReportPath, $"[{Now()}] 转储写入{(ok ? "成功" : $"失败（Win32 错误 {Marshal.GetLastWin32Error()}）")}: {dmpPath}");

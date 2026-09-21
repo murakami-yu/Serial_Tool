@@ -6,7 +6,9 @@ namespace SerialTool.App.Services;
 /// <summary>
 /// ConPTY 本地终端会话（Win10 1809+ 系统 API，P/Invoke 零外部依赖）：
 /// 承载 pwsh / powershell / cmd，实现 IBusBackend 事件流，终端视图直接复用。
-/// 关闭顺序：先关输入管写端（EOF → shell 退出）→ 等待进程 → 兜底 Terminate → 收 ConPTY。
+/// 关闭顺序：先关输入管写端（EOF → shell 退出）→ 等待进程 → 兜底 Terminate →
+/// CancelSynchronousIo 取消读线程阻塞读 → 收 ConPTY（Win10 死锁规避，详见 Teardown）。
+/// 整套拆卸在线程池执行（Close/Dispose = Task.Run），UI 线程绝不承担。
 /// </summary>
 public sealed class ConPtySession : SerialTool.Backends.IBusBackend
 {
@@ -105,12 +107,24 @@ public sealed class ConPtySession : SerialTool.Backends.IBusBackend
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr hObject);
 
+    // Win10 关窗死锁规避三件套：CancelSynchronousIo 解除读线程的阻塞 ReadFile（ClosePseudoConsole 的前置条件）
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CancelSynchronousIo(IntPtr hThread);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenThread(uint dwDesiredAccess, bool bInheritHandle, uint dwThreadId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
     // ---------- 会话实现 ----------
 
     private IntPtr _hPC, _hInWrite, _hOutRead, _hProc, _hThread, _attrList, _heap;
     private IntPtr _hInRead, _hOutWrite; // 交给 ConPTY 的管道端（会话销毁时收）
     private Thread? _readThread;
+    private uint _readTid;              // 读线程 TID（Teardown 里 CancelSynchronousIo 用）
     private volatile bool _running;
+    private int _tornDown;              // Close/Dispose 双调用只生效一次
 
     public string Name => "Local";
     public bool IsOpen => _running;
@@ -207,12 +221,15 @@ public sealed class ConPtySession : SerialTool.Backends.IBusBackend
             throw new InvalidOperationException("写入本地终端失败");
     }
 
-    public void Close() => Teardown();
+    /// <summary>关闭/释放：整套拆卸卸载到线程池——Win10 上 ClosePseudoConsole 存在死锁风险
+    ///（见 Teardown 注释），绝不能让调用线程（关窗场景 = UI 线程）承担。</summary>
+    public void Close() => System.Threading.Tasks.Task.Run(Teardown);
 
-    public void Dispose() => Teardown();
+    public void Dispose() => System.Threading.Tasks.Task.Run(Teardown);
 
     private void ReadLoop()
     {
+        _readTid = GetCurrentThreadId();   // 供 Teardown 取消阻塞读
         var buf = new byte[8192];
         while (_running)
         {
@@ -236,7 +253,8 @@ public sealed class ConPtySession : SerialTool.Backends.IBusBackend
 
     private void Teardown()
     {
-        if (!_running && _hPC == IntPtr.Zero) return;
+        // Close + Dispose 会接连入队两次，只生效一次
+        if (Interlocked.Exchange(ref _tornDown, 1) == 1) return;
         _running = false;
 
         if (_hInWrite != IntPtr.Zero) CloseHandle(_hInWrite); // EOF → ConPTY 关闭 → shell 退出
@@ -245,8 +263,21 @@ public sealed class ConPtySession : SerialTool.Backends.IBusBackend
             if (WaitForSingleObject(_hProc, 3000) != 0)
                 TerminateProcess(_hProc, 0);
         }
+        // Win10 死锁规避（Win11 已修复，本机不复现）：
+        // ClosePseudoConsole 会等管道 I/O 退出，而读线程此时仍阻塞在输出管道的同步 ReadFile 上
+        // → ClosePseudoConsole 永不返回 → UI 卡死（2026-09-21 Win10 复现机挂起 dump 实锤路径）。
+        // 正解：先 CancelSynchronousIo 取消读线程的阻塞读（ReadFile 立即出错返回 → 读线程退出），再关。
+        if (_readTid != 0 && _readThread?.IsAlive == true)
+        {
+            var hT = OpenThread(0x0001 /*THREAD_TERMINATE*/, false, _readTid);
+            if (hT != IntPtr.Zero)
+            {
+                CancelSynchronousIo(hT);
+                CloseHandle(hT);
+            }
+        }
+        _readThread?.Join(1000);
         if (_hPC != IntPtr.Zero) ClosePseudoConsole(_hPC);
-        _readThread?.Join(500);
 
         TeardownHandles();
     }
