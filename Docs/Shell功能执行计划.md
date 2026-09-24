@@ -52,8 +52,8 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 - 工具条新增「终端」勾选项（与时序图并列），勾选打开终端窗口（独立窗，默认贴主窗右侧）。
 - 串口/TCP 连接后，终端窗把 RX 字节流按 VT100/xterm 解释渲染：颜色、清屏、光标移动、`htop`/`vim` 备屏切换。
 - 键盘输入即时编码发往对端（回显由对端负责）；中文输入法可输入（经 `GenerateCharInput`）。
-- 滚回：鼠标滚轮 + 滚动条，滚到底自动跟随；备屏（vim 等）禁滚。
-- 复制粘贴：拖选 + 右键菜单（复制/粘贴/清屏/回到底部）；`Ctrl+Shift+C/V`；`Ctrl+C` 遵循终端惯例——**有选区时复制（复制即清选区，对齐 Windows Terminal），无选区时发送 `^C`（\x03）中断对端**。
+- 滚回：鼠标滚轮 + 滚动条，滚到底自动跟随；备屏（vim 等）无滚回缓冲区——应用开鼠标跟踪则滚轮事件转发，未开则模拟 Up/Down 键发给应用（2026-09-25 修订，见 §6）；Shift+滚轮强制终端自处理（非备屏滚回 / 备屏模拟 PgUp/PgDn）。
+- 复制粘贴：拖选 + 右键菜单（复制/粘贴/清屏/回到底部）；`Ctrl+Shift+C/V` 与 `Ctrl+V` 粘贴；`Ctrl+C` 遵循终端惯例——**有选区时复制（复制即清选区，对齐 Windows Terminal），无选区时发送 `^C`（\x03）中断对端**；应用开鼠标跟踪时 **Shift+左键强制文字选择、Shift+右键强制弹菜单**（2026-09-25 修订，见 §6）。
 - 未连接时显示遮罩「未连接」；连接断开终端保留内容（只读）。
 
 ### 3.2 设计要点
@@ -146,6 +146,7 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 - **终端配色现代化（2026-09-19 用户反馈「优化 shell 界面显示和文字配色」）**：XTerm.NET 默认纯黑底（#000000）+ 纯白字 + VGA 老调色板 → 改 **Campbell 调色板（Windows Terminal 默认 16 色）+ VS Code 式柔和深底**：背景 #1E1E1E、前景 #D4D4D4、光标 #AEAFAD、选区 #264F78，经 `TerminalOptions.Theme`（`ThemeOptions`）下发；宿主 Border 背景与未连接遮罩同步 #1E1E1E（`TerminalView.ThemeBackground` 常量单一来源）。**同轮修复潜藏渲染缺陷**：原 DrawRun 把 `GetFgColorMode()==0` 当「默认色」——实际 mode 0 = **256 色调色板索引**（256/257 才是默认标记，mode 1 = RGB 直出），导致全部索引色（含 30-37/90-97 SGR 标准色、38;5;n 256 色）被画成默认前景色、索引背景整片不画；新增 `ResolveAttrColor`（mode 分流 + 默认标记 + `PaletteColor` 查表）统一 DrawRun 与 Block 光标重画两路。验证：本地 PowerShell 标签灌入 16 色 Write-Host + 38;5;208 + 38;2 真彩 + 粗体/下划线混排，截屏逐色肉眼核对正确；107 单测全绿。
 - **终端字体更换（2026-09-19，三轮演进）**：① 用户指定英文 **Times New Roman**、中文 GB2312（本机无 仿宋_GB2312/楷体_GB2312 命名字体 → 宋体 SimSun，GB2312 字符集标准字体）。**渲染架构随之调整**：TNR 是比例字体（i=3.9 / W=13.2 DIP @14pt），原「同属性连续格合并为一条 FormattedText」会让后续字符按自然字宽推进、漂出格网——改为**逐格定位绘制** + `FormattedText` 缓存（key=文本/粗/斜/前景色，DPI 变化清空），背景仍按同底色段合并。② 格宽初版取 max(TNR 粗体 W≈13.7, SimSun 全角/2) → 用户实测反馈「占位太宽」→ 降 9 DIP 基准 + 超格字符（M/W/m/w）水平压缩。③ 用户仍不满意，要求「参考 VS Code 终端」——出 TNR vs **Cascadia Mono**（VS Code 终端默认等宽）双方案对比截图，用户选定后者：**最终方案 = `Cascadia Mono, SimSun`**，格宽 = max(数字 0 字宽≈8.2, 全角/2=7)，字距天然均匀、零压缩、对齐精准；逐格绘制与压缩逻辑保留（等宽下不触发，留作防御）。教训：**终端网格场景优先等宽字体，比例字体的压缩/稀疏怎么调都有妥协**。验证：离屏截图逐项核对 + 真实应用窗口截图复核（长路径单行不折行、字符均匀）。
 - **Ctrl+C 失效根因与修复（2026-09-19 用户反馈「ctrl+c 没效果」）**：XTerm.NET 的 `Selection.HasSelection` 在**零宽选区**（单击未拖动）后也为真，且 `GetSelectionText()` 对零宽返回 anchor 处 1 个字符（非空）——鼠标点终端聚焦一次，`Ctrl+C` 就被「有选区→复制」分支吞掉（还污染剪贴板 1 字符），`^C` 永远发不出去。修复三层：① 鼠标抬起时零宽选区即 `ClearSelection`；② `Ctrl+C` 复制分支加「选文非空」守卫；③ **`CopySelection` 复制后清除选区**（Windows Terminal/xterm.js 惯例——引擎不会因新输出/键入自动清选区，残留选区会让后续 Ctrl+C 永远进复制分支）。另实测澄清：`\x03` 写入 ConPTY 输入管在 cmd / powershell(PSReadLine) 下均能正常中断运行中命令（ping -t）与取消行编辑，后端链路无问题。验证：WPF harness 对 TerminalView 注入真实 Ctrl+C 键击（SendInput）——无选区发 03 / 有选区复制且选区即清 / 复制后再按发 03，全过。
+- **终端交互体验修复（2026-09-25 用户反馈「选中不能 Ctrl+C/V、TUI 不能滑动」）**：三个根因——① 应用开鼠标跟踪（vim/htop）后鼠标事件**全量转发给应用**，本地选区逻辑不触发，选不上字自然无从复制；② `Ctrl+V` 从未绑定粘贴（原落到字符路径发 `\x16`）；③ 备屏+无鼠标跟踪时滚轮**直接丢弃**（代码 `return`），less/man/vim 关鼠标下滚轮等于废的。修复（全在 `TerminalView`，对齐 Windows Terminal/xterm 惯例）：**Shift+左键拖动强制文字选择**（`_forceSelecting` 标记绕过跟踪）、**Shift+右键强制弹上下文菜单**（跟踪时右键事件原本也被吃掉）；**Ctrl+V 粘贴**（原 `\x16` literal-next 极少使用，Ctrl+Shift+V 终端标准键保留）；备屏+无跟踪滚轮**模拟 Up/Down 键**（每格 3 行）；**Shift+滚轮**始终终端自处理——非备屏强制滚回滚 / 备屏模拟 PgUp/PgDn 整页翻动；同轮**补全鼠标转发缺口**：左键 Down/Up/Drag（Drag 按 ButtonEvent/AnyEvent 模式）、右键 Down/Up（原实现只转发滚轮）。滚轮多格滚动（|Delta|>120）按格数展开发送。验证：构建 0 错误；用户本地终端实测 vim/less 滚轮与 Shift 选择复制确认。
 
 ### 6.1 验收状态
 
