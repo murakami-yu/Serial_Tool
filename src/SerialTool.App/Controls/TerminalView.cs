@@ -514,7 +514,7 @@ public class TerminalView : FrameworkElement
             return;
         }
 
-        // Ctrl+Shift+C/V 复制粘贴；Ctrl+C 无选区时发 ^C（终端惯例），有选区时复制
+        // Ctrl+Shift+C/V 复制粘贴（终端标准键）；Ctrl+C 无选区时发 ^C（终端惯例），有选区时复制
         if (mods == (XMods.Control | XMods.Shift))
         {
             if (key == Key.C) { e.Handled = true; CopySelection(); return; }
@@ -525,6 +525,13 @@ public class TerminalView : FrameworkElement
         {
             e.Handled = true;
             CopySelection();
+            return;
+        }
+        // Ctrl+V 粘贴（Windows 用户习惯；原 \x16 literal next 极少使用）
+        if (key == Key.V && mods == XMods.Control)
+        {
+            e.Handled = true;
+            PasteFromClipboard();
             return;
         }
 
@@ -647,6 +654,8 @@ public class TerminalView : FrameworkElement
     // ---------- 鼠标 ----------
 
     private Point? _selAnchor;
+    private bool _forceSelecting;   // Shift 强制选择中（绕过应用鼠标跟踪）
+    private bool _mouseDownForwarded; // 左键按下已作为鼠标事件转发（跟踪模式下抬起也要转发）
 
     private (int col, int row) CellFromPoint(Point p)
     {
@@ -658,8 +667,36 @@ public class TerminalView : FrameworkElement
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         Focus();
-        Mouse.Capture(this);
         var (col, row) = CellFromPoint(e.GetPosition(this));
+        var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+
+        // Shift + 左键：强制进入文字选择（绕过应用鼠标跟踪）——TUI 应用里也能选字复制
+        if (shift)
+        {
+            _forceSelecting = true;
+            _mouseDownForwarded = false;
+            Mouse.Capture(this);
+            _selAnchor = new Point(col, row);
+            _terminal.Selection.StartSelection(col, row, XTerm.Selection.SelectionMode.Normal);
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
+        // 应用开启鼠标跟踪：左键按下作为鼠标事件转发
+        if (_terminal.MouseTrackingMode != XTerm.Input.MouseTrackingMode.None)
+        {
+            _mouseDownForwarded = true;
+            Emit(_terminal.GenerateMouseEvent(
+                XMouseButton.Left, col, row, XMouseEventType.Down, ToMods(Keyboard.Modifiers)));
+            e.Handled = true;
+            return;
+        }
+
+        // 普通选择
+        _forceSelecting = false;
+        _mouseDownForwarded = false;
+        Mouse.Capture(this);
         _selAnchor = new Point(col, row);
         _terminal.Selection.StartSelection(col, row, XTerm.Selection.SelectionMode.Normal);
         InvalidateVisual();
@@ -668,8 +705,33 @@ public class TerminalView : FrameworkElement
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        if (_selAnchor is null || e.LeftButton != MouseButtonState.Pressed) return;
         var (col, row) = CellFromPoint(e.GetPosition(this));
+
+        // 强制选择中：始终更新选区
+        if (_forceSelecting && _selAnchor.HasValue && e.LeftButton == MouseButtonState.Pressed)
+        {
+            _terminal.Selection.UpdateSelection(col, row);
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
+        // 鼠标跟踪模式 + 左键拖动：作为 Drag 事件转发
+        if (_mouseDownForwarded && e.LeftButton == MouseButtonState.Pressed
+            && _terminal.MouseTrackingMode != XTerm.Input.MouseTrackingMode.None)
+        {
+            if (_terminal.MouseTrackingMode == XTerm.Input.MouseTrackingMode.AnyEvent
+                || _terminal.MouseTrackingMode == XTerm.Input.MouseTrackingMode.ButtonEvent)
+            {
+                Emit(_terminal.GenerateMouseEvent(
+                    XMouseButton.Left, col, row, XMouseEventType.Drag, ToMods(Keyboard.Modifiers)));
+            }
+            e.Handled = true;
+            return;
+        }
+
+        // 普通选区拖动
+        if (_selAnchor is null || e.LeftButton != MouseButtonState.Pressed) return;
         _terminal.Selection.UpdateSelection(col, row);
         InvalidateVisual();
         e.Handled = true;
@@ -677,37 +739,121 @@ public class TerminalView : FrameworkElement
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
-        if (_selAnchor is null) return;
+        var (col, row) = CellFromPoint(e.GetPosition(this));
+
+        // 鼠标跟踪模式抬起：转发 Up 事件
+        if (_mouseDownForwarded)
+        {
+            _mouseDownForwarded = false;
+            if (_terminal.MouseTrackingMode != XTerm.Input.MouseTrackingMode.None)
+            {
+                Emit(_terminal.GenerateMouseEvent(
+                    XMouseButton.Left, col, row, XMouseEventType.Up, ToMods(Keyboard.Modifiers)));
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (_selAnchor is null) { e.Handled = true; return; }
         var anchor = _selAnchor.Value;
         Mouse.Capture(null);
         _selAnchor = null;
+        _forceSelecting = false;
         _terminal.Selection.EndSelection();
         // 纯点击（未拖动）留下的是零宽选区，引擎 EndSelection 不会自动清除（HasSelection 恒真，
         // 会把 Ctrl+C 导向复制分支吞掉 ^C）——零宽即清除，顺带实现"点击清除已有选区"的终端惯例
-        var (col, row) = CellFromPoint(e.GetPosition(this));
         if (col == (int)anchor.X && row == (int)anchor.Y)
             _terminal.Selection.ClearSelection();
         InvalidateVisual();
         e.Handled = true;
     }
 
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        Focus();
+        var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+
+        // Shift + 右键：强制弹上下文菜单（绕过鼠标跟踪）
+        // 无 Shift 且应用开鼠标跟踪：右键转发给应用
+        if (!shift && _terminal.MouseTrackingMode != XTerm.Input.MouseTrackingMode.None)
+        {
+            var (col, row) = CellFromPoint(e.GetPosition(this));
+            Emit(_terminal.GenerateMouseEvent(
+                XMouseButton.Right, col, row, XMouseEventType.Down, ToMods(Keyboard.Modifiers)));
+            e.Handled = true;
+            return;
+        }
+
+        // 普通 / Shift 强制：上下文菜单由 WPF 原生弹出（ContextMenu 已在构造函数绑定）
+        // 不设 e.Handled = true，让 WPF 继续冒泡触发 ContextMenuOpening
+        base.OnMouseRightButtonDown(e);
+    }
+
+    protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+    {
+        if (_terminal.MouseTrackingMode != XTerm.Input.MouseTrackingMode.None
+            && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            var (col, row) = CellFromPoint(e.GetPosition(this));
+            Emit(_terminal.GenerateMouseEvent(
+                XMouseButton.Right, col, row, XMouseEventType.Up, ToMods(Keyboard.Modifiers)));
+            e.Handled = true;
+            return;
+        }
+        base.OnMouseRightButtonUp(e);
+    }
+
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         e.Handled = true;
         var (col, row) = CellFromPoint(e.GetPosition(this));
+        var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        var linesPerWheel = 3;  // 每滚轮格（Delta=120）模拟 3 行，对齐 Windows Terminal 默认
+        var steps = Math.Abs(e.Delta) / 120;
+        if (steps < 1) steps = 1;
+        var up = e.Delta > 0;
+
+        // Shift + 滚轮：始终由终端自己处理（绕过鼠标跟踪）
+        //   - 非备屏：滚回滚缓冲区（滚轮版 Shift+PgUp/PgDn，速度与普通滚回一致）
+        //   - 备屏：模拟 PageUp/PageDown 发给应用（整页翻动，适合看大段内容）
+        if (shift)
+        {
+            if (_terminal.IsAlternateBufferActive)
+            {
+                var key = up ? XKey.PageUp : XKey.PageDown;
+                for (var i = 0; i < steps; i++)
+                    Emit(_terminal.GenerateKeyInput(key, XMods.None));
+            }
+            else
+            {
+                ScrollViewportLines(up ? -ScrollWheelLines * steps : ScrollWheelLines * steps);
+            }
+            return;
+        }
 
         // 应用开启鼠标跟踪（vim/htop 等）：滚轮作为鼠标事件转发
         if (_terminal.MouseTrackingMode != XTerm.Input.MouseTrackingMode.None)
         {
-            var ev = e.Delta > 0 ? XMouseEventType.WheelUp : XMouseEventType.WheelDown;
-            Emit(_terminal.GenerateMouseEvent(
-                e.Delta > 0 ? XMouseButton.WheelUp : XMouseButton.WheelDown,
-                col, row, ev, ToMods(Keyboard.Modifiers)));
+            var ev = up ? XMouseEventType.WheelUp : XMouseEventType.WheelDown;
+            var btn = up ? XMouseButton.WheelUp : XMouseButton.WheelDown;
+            // 滚轮多分格：每格发一次
+            for (var i = 0; i < steps; i++)
+                Emit(_terminal.GenerateMouseEvent(btn, col, row, ev, ToMods(Keyboard.Modifiers)));
             return;
         }
-        // 备屏无滚回（vim 全屏模式且未开鼠标跟踪）：不滚动
-        if (_terminal.IsAlternateBufferActive) return;
-        ScrollViewportLines(e.Delta > 0 ? -ScrollWheelLines : ScrollWheelLines);
+
+        // 备屏 + 无鼠标跟踪（less/man/vim 鼠标关 等）：模拟 Up/Down 按键
+        if (_terminal.IsAlternateBufferActive)
+        {
+            var key = up ? XKey.UpArrow : XKey.DownArrow;
+            var n = linesPerWheel * steps;
+            for (var i = 0; i < n; i++)
+                Emit(_terminal.GenerateKeyInput(key, XMods.None));
+            return;
+        }
+
+        // 普通缓冲区：滚回滚
+        ScrollViewportLines(up ? -ScrollWheelLines * steps : ScrollWheelLines * steps);
     }
 
     // ---------- 滚动 / 公共操作 ----------
