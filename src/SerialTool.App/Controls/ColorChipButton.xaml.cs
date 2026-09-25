@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -7,7 +8,7 @@ using System.Windows.Media;
 
 namespace SerialTool.App.Controls;
 
-/// <summary>颜色选择控件：色块按钮弹出预设调色板，选中色写回 Hex（双向绑定到 VM）。</summary>
+/// <summary>颜色选择控件：色块按钮弹出取色板（HSV 色图 + 预设色 + HEX/RGB 输入），选中色写回 Hex（双向绑定到 VM）。</summary>
 public partial class ColorChipButton : UserControl
 {
     /// <summary>预设调色板 16 色：灰阶 + 常用色 + 主题蓝/正文色（含两个默认值）。</summary>
@@ -34,6 +35,11 @@ public partial class ColorChipButton : UserControl
         nameof(DefaultHex), typeof(string), typeof(ColorChipButton),
         new PropertyMetadata(string.Empty));
 
+    /// <summary>是否在按钮右端显示当前 HEX 色值（外观设置等宽布局用；默认关，主窗发送色/接收色保持紧凑）。</summary>
+    public static readonly DependencyProperty ShowHexProperty = DependencyProperty.Register(
+        nameof(ShowHex), typeof(bool), typeof(ColorChipButton),
+        new PropertyMetadata(false));
+
     public string Hex
     {
         get => (string)GetValue(HexProperty);
@@ -50,6 +56,12 @@ public partial class ColorChipButton : UserControl
     {
         get => (string)GetValue(DefaultHexProperty);
         set => SetValue(DefaultHexProperty, value);
+    }
+
+    public bool ShowHex
+    {
+        get => (bool)GetValue(ShowHexProperty);
+        set => SetValue(ShowHexProperty, value);
     }
 
     public ColorChipButton()
@@ -75,7 +87,152 @@ public partial class ColorChipButton : UserControl
     private bool _syncing;
 
     /// <summary>弹层每次打开按当前 Hex 重置输入区（预设/微调可能已在外部改色）。</summary>
-    private void PalettePopup_Opened(object? sender, System.EventArgs e) => SyncFromHex(Hex);
+    private void PalettePopup_Opened(object? sender, System.EventArgs e)
+    {
+        SyncFromHex(Hex);
+        // 色图十字圈/色相标跟随当前色；ActualWidth 要等弹层布局完成才有效，推迟到布局后执行
+        if (TryParseHex(Hex, out var c))
+            Dispatcher.BeginInvoke(new Action(() => SyncMapFromColor(c)));
+    }
+
+    // ---------- 色图取色（HSV）：色图定饱和度/明度，色相条定色相；拖动只刷预览，松手即应用 ----------
+
+    /// <summary>色相 0-360、饱和度/明度 0-1（色图 + 色相条的当前状态）。</summary>
+    private double _hue, _sat = 1, _val = 1;
+    private bool _mapDrag, _hueDrag;
+
+    private void Map_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _mapDrag = true;
+        ColorMap.CaptureMouse();   // 按住拖出图外仍能持续取色，松手才释放
+        MapPick(e.GetPosition(ColorMap));
+    }
+
+    private void Map_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_mapDrag) MapPick(e.GetPosition(ColorMap));
+    }
+
+    private void Map_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_mapDrag) return;
+        _mapDrag = false;
+        ColorMap.ReleaseMouseCapture();
+        MapPick(e.GetPosition(ColorMap));
+        ApplyCustom();   // 松手即写回 Hex（等同「应用」按钮）
+    }
+
+    private void MapPick(Point p)
+    {
+        double w = ColorMap.ActualWidth, h = ColorMap.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+        _sat = Clamp01(p.X / w);
+        _val = 1 - Clamp01(p.Y / h);
+        ApplyHsv();
+    }
+
+    private void Hue_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _hueDrag = true;
+        HueBar.CaptureMouse();
+        HuePick(e.GetPosition(HueBar));
+    }
+
+    private void Hue_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_hueDrag) HuePick(e.GetPosition(HueBar));
+    }
+
+    private void Hue_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_hueDrag) return;
+        _hueDrag = false;
+        HueBar.ReleaseMouseCapture();
+        HuePick(e.GetPosition(HueBar));
+        ApplyCustom();
+    }
+
+    private void HuePick(Point p)
+    {
+        double w = HueBar.ActualWidth;
+        if (w <= 0) return;
+        _hue = Clamp01(p.X / w) * 360.0;
+        ApplyHsv();
+    }
+
+    /// <summary>按 _hue/_sat/_val 重算颜色：刷预览与 HEX/RGB 输入框（走 _syncing 防回环）、摆十字圈与色相标。</summary>
+    private void ApplyHsv()
+    {
+        var c = HsvToRgb(_hue, _sat, _val);
+        HueStop.Color = HsvToRgb(_hue, 1, 1);
+        _syncing = true;
+        try
+        {
+            HexBox.Text = $"{c.R:X2}{c.G:X2}{c.B:X2}";
+            RBox.Text = c.R.ToString();
+            GBox.Text = c.G.ToString();
+            BBox.Text = c.B.ToString();
+            PreviewBox.Background = new SolidColorBrush(c);
+        }
+        finally { _syncing = false; }
+        MapThumb.Fill = new SolidColorBrush(c);
+        PositionThumbs();
+    }
+
+    /// <summary>按既有颜色摆放色图（不改输入框——HSV 往返换算有 ±1 舍入漂移，展示值以 Hex 真值为准）。</summary>
+    private void SyncMapFromColor(Color c)
+    {
+        RgbToHsv(c, out var h, out var s, out var v);
+        if (s > 0.01) _hue = h;   // 灰阶色不带色相信息，沿用上次色相，色图底色不跳红
+        _sat = s;
+        _val = v;
+        HueStop.Color = HsvToRgb(_hue, 1, 1);
+        MapThumb.Fill = new SolidColorBrush(c);
+        PositionThumbs();
+    }
+
+    private void PositionThumbs()
+    {
+        double mw = ColorMap.ActualWidth, mh = ColorMap.ActualHeight, hw = HueBar.ActualWidth;
+        if (mw > 0 && mh > 0)
+        {
+            Canvas.SetLeft(MapThumb, _sat * mw - 6);
+            Canvas.SetTop(MapThumb, (1 - _val) * mh - 6);
+        }
+        if (hw > 0) Canvas.SetLeft(HueThumb, _hue / 360.0 * hw - 3);
+    }
+
+    private static double Clamp01(double v) => v < 0 ? 0 : v > 1 ? 1 : v;
+
+    private static Color HsvToRgb(double h, double s, double v)
+    {
+        h = (h % 360 + 360) % 360;
+        double c = v * s, x = c * (1 - Math.Abs(h / 60 % 2 - 1)), m = v - c;
+        double r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        return Color.FromRgb(
+            (byte)Math.Round((r + m) * 255),
+            (byte)Math.Round((g + m) * 255),
+            (byte)Math.Round((b + m) * 255));
+    }
+
+    private static void RgbToHsv(Color c, out double h, out double s, out double v)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min;
+        v = max;
+        s = max == 0 ? 0 : d / max;
+        if (d == 0) h = 0;
+        else if (max == r) h = 60 * ((g - b) / d % 6);
+        else if (max == g) h = 60 * ((b - r) / d + 2);
+        else h = 60 * ((r - g) / d + 4);
+        if (h < 0) h += 360;
+    }
 
     private void SyncFromHex(string hex)
     {
@@ -118,6 +275,7 @@ public partial class ColorChipButton : UserControl
             PreviewBox.Background = new SolidColorBrush(c);
         }
         finally { _syncing = false; }
+        SyncMapFromColor(c);   // 手输精确色，色图十字圈同步跟随
     }
 
     private void RgbBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -133,6 +291,7 @@ public partial class ColorChipButton : UserControl
             PreviewBox.Background = new SolidColorBrush(c);
         }
         finally { _syncing = false; }
+        SyncMapFromColor(c);
     }
 
     private static bool TryReadChannel(string? s, out byte v)
