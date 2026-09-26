@@ -26,7 +26,7 @@ namespace SerialTool.App.Controls;
 /// 坐标语义（实证）：渲染行 r ↔ <c>Buffer.Lines[Buffer.ViewportY + r]</c>；
 /// 游标视口行 = <c>YBase + Y - ViewportY</c>；<c>IsCellSelected(col, 视口行)</c> 内部自行加 ViewportY。
 /// </summary>
-public class TerminalView : FrameworkElement
+public class TerminalView : Grid
 {
     private const double FontSize = 14.0;
     private const double PadH = 3.0;   // 左右内边距（DIP）
@@ -92,13 +92,18 @@ public class TerminalView : FrameworkElement
         _typefaceItalic = new Typeface(_font, FontStyles.Italic, FontWeights.Normal, FontStretches.Normal);
         _typefaceBoldItalic = new Typeface(_font, FontStyles.Italic, FontWeights.Bold, FontStretches.Normal);
 
-        Focusable = true;
-        FocusVisualStyle = null;
         Cursor = Cursors.IBeam;
         ClipToBounds = true;
         SnapsToDevicePixels = true;
 
         ContextMenu = BuildContextMenu();
+
+        // 隐藏输入框（xterm.js 同款 IME 架构）：键盘焦点实际落它身上——WPF TextBox 自带完整
+        // TSF/IMM 支持，输入法候选框由 WPF 锚定到它的光标；框体透明叠在终端游标格上
+        // （OnRender 末尾 UpdateImeBoxPosition），候选框即跟随终端光标。框内不存字：
+        // 直打字符 PreviewTextInput 直发对端（handled 阻断插入），IME 上屏文字 TextChanged 转发后清空
+        _imeBox = BuildImeBox();
+        Children.Add(_imeBox);
 
         _pump = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
         _pump.Tick += (_, _) => PumpBytes();
@@ -106,7 +111,7 @@ public class TerminalView : FrameworkElement
         _blink = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(530) };
         _blink.Tick += (_, _) =>
         {
-            if (IsKeyboardFocused && _terminal.CursorVisible)
+            if (_imeBox.IsKeyboardFocused && _terminal.CursorVisible)
             {
                 _cursorOn = !_cursorOn;
                 InvalidateVisual();
@@ -114,10 +119,8 @@ public class TerminalView : FrameworkElement
             else _cursorOn = true;
         };
 
-        Loaded += (_, _) => { _pump.Start(); _blink.Start(); InvalidateVisual(); };
-        Unloaded += (_, _) => { _pump.Stop(); _blink.Stop(); };
-        GotKeyboardFocus += (_, _) => InvalidateVisual();
-        LostKeyboardFocus += (_, _) => InvalidateVisual();
+        Loaded += (_, _) => { _pump.Start(); _blink.Start(); AttachImeHook(); InvalidateVisual(); };
+        Unloaded += (_, _) => { _pump.Stop(); _blink.Stop(); DetachImeHook(); };
         SizeChanged += (_, _) => InvalidateVisual();
     }
 
@@ -130,6 +133,7 @@ public class TerminalView : FrameworkElement
 
     public void Dispose()
     {
+        DetachImeHook();
         _pump.Stop();
         _blink.Stop();
         _terminal.Dispose();
@@ -217,6 +221,7 @@ public class TerminalView : FrameworkElement
 
         RenderSelection(dc);
         RenderCursor(dc);
+        UpdateImeBoxPosition();
     }
 
     /// <summary>逐行渲染：TNR 是比例字体（字宽≠格宽），文字必须**逐格**定位绘制
@@ -352,6 +357,8 @@ public class TerminalView : FrameworkElement
     private void RenderCursor(DrawingContext dc)
     {
         if (!_terminal.CursorVisible || !_cursorOn) return;
+        // IME 组合期：终端光标让位给内联预编辑串（框叠在游标格上，Windows Terminal 同款观感）
+        if (_imeComposing && _imeBox.IsKeyboardFocused) return;
         var buf = _terminal.Buffer;
         var row = buf.YBase + buf.Y - buf.ViewportY;
         if (row < 0 || row >= _terminal.Rows || buf.X >= _terminal.Cols) return;
@@ -557,13 +564,149 @@ public class TerminalView : FrameworkElement
         // 其余留给 TextInput（可打印字符 / IME 提交）
     }
 
-    protected override void OnTextInput(TextCompositionEventArgs e)
+    // ---------- 隐藏输入框（IME 支持） ----------
+
+    private readonly TextBox _imeBox;
+    private bool _imeComposing;     // IME 组合中（预编辑未上屏，TextChanged 不转发）
+    private bool _imeClearing;      // Flush 清空防重入
+    private double _imeBoxX = -1, _imeBoxY = -1;
+    private System.Windows.Interop.HwndSource? _hwndSource;
+    private System.Windows.Interop.HwndSourceHook? _imeHook;  // AddHook 持弱引用，委托必须自持
+
+    private const int WM_IME_STARTCOMPOSITION = 0x010D;
+    private const int WM_IME_ENDCOMPOSITION = 0x010E;
+
+    /// <summary>宿主焦点语义不变：焦点转给隐藏输入框（键盘输入与 IME 都在它身上）。</summary>
+    public new bool Focus() => _imeBox.Focus();
+
+    private TextBox BuildImeBox()
     {
-        if (string.IsNullOrEmpty(e.Text)) return;
-        e.Handled = true;
-        var mods = ToMods(Keyboard.Modifiers);
-        foreach (var ch in e.Text)
-            Emit(_terminal.GenerateCharInput(ch, mods));
+        var box = new TextBox
+        {
+            // 不吃 App 级隐式 TextBox 样式（圆角模板 + IsKeyboardFocusWithin 蓝色 1.5px 边框触发器——
+            // 该触发器直接改模板 Border，局部 BorderThickness=0 拦不住，焦点态常驻显形成蓝框）
+            Style = null,
+            // Windows Terminal 式内联预编辑：背景/光标全透明（空框时完全不可见，不挡终端光标），
+            // 组合期由 IME 在框文档里画预编辑文字（带下划线）——框体叠在游标格上即等于画在终端里
+            Background = null,
+            CaretBrush = Brushes.Transparent,
+            // WPF 组合期用 SelectionBrush 画预编辑高亮（默认系统蓝，深色终端上成蓝块）——
+            // 透明化，预编辑文字色（SelectionTextBrush）每帧跟终端前景（UpdateImeBoxPosition）
+            SelectionBrush = Brushes.Transparent,
+            SelectionTextBrush = Brushes.White,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Margin = new Thickness(0),
+            FontFamily = _font,
+            FontSize = FontSize,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            IsHitTestVisible = false,
+            FocusVisualStyle = null,
+            Width = _cellW * 2,
+            Height = _cellH,
+        };
+        // 直打字符：直发对端 + handled 阻断插入（框内永不存字）
+        box.PreviewTextInput += (_, e) =>
+        {
+            if (string.IsNullOrEmpty(e.Text)) return;
+            e.Handled = true;
+            var mods = ToMods(Keyboard.Modifiers);
+            foreach (var ch in e.Text)
+                Emit(_terminal.GenerateCharInput(ch, mods));
+        };
+        // 组合状态跟踪（handledEventsToo：TextBox 内部会先标 handled）；起止均失效重绘——
+        // 组合期隐藏终端自己的光标（预编辑串顶替其位置，Windows Terminal 同款观感）
+        box.AddHandler(TextCompositionManager.PreviewTextInputStartEvent,
+            (TextCompositionEventHandler)((_, _) => { _imeComposing = true; InvalidateVisual(); }), true);
+        box.AddHandler(TextCompositionManager.PreviewTextInputUpdateEvent,
+            (TextCompositionEventHandler)((_, _) => _imeComposing = true), true);
+        // 关键时序：微信输入法上屏时最终文字先进框（TextChanged 时 composing 仍 true），
+        // Final 事件晚几毫秒才到——复位后必须补冲刷（见 ScheduleImeFlush）
+        box.AddHandler(TextCompositionManager.PreviewTextInputEvent,
+            (TextCompositionEventHandler)((_, _) => { _imeComposing = false; ScheduleImeFlush(); InvalidateVisual(); }), true);
+        // IME 上屏（及任何漏网插入）：转发对端后清空
+        box.TextChanged += (_, _) => FlushImeBoxText();
+        box.GotKeyboardFocus += (_, _) => InvalidateVisual();
+        box.LostKeyboardFocus += (_, _) => InvalidateVisual();
+        return box;
+    }
+
+    /// <summary>上屏文字转发对端并清空。预编辑阶段（_imeComposing）不转发——
+    /// 那是未上屏的拼音，提交后 TextChanged / ENDCOMPOSITION 再来。</summary>
+    /// <summary>组合结束（Final / WM_IME_ENDCOMPOSITION）后的补冲刷。Background 优先级推迟：
+    /// 上屏时 TSF 写入文档与结束事件的时序不定（实测微信输入法 TextChanged 先于 Final），
+    /// 推迟到输入队列排空后冲刷——TextChanged 先行则框内已是最终文字，Final 先行则等写入落定，
+    /// 两种时序都取到上屏文字且不会误发预编辑串（冲刷与 TextChanged 路径幂等，先到先发）。</summary>
+    private void ScheduleImeFlush() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => FlushImeBoxText()));
+
+    private void FlushImeBoxText()
+    {
+        if (_imeClearing || _imeComposing) return;
+        var t = _imeBox.Text;
+        if (t.Length == 0) return;
+        _imeClearing = true;
+        _imeBox.Clear();
+        _imeClearing = false;
+        foreach (var ch in t)
+            Emit(_terminal.GenerateCharInput(ch, XMods.None));
+        InvalidateVisual();
+    }
+
+    /// <summary>隐藏框叠到游标格上（OnRender 末尾调用）：候选框锚的是框内光标，
+    /// 框在哪候选框就在哪；宽取到右缘——预编辑串内联显示在光标行（Windows Terminal 式）。
+    /// 前景色随终端主题（OSC 10 运行时可改），空框无字无光标完全不可见。
+    /// **组合期冻结锚点**：TUI 应用（Claude Code 等）高频重绘会让引擎光标抖动，框跟着挪的话
+    /// 输入法会弃用内联组合、改画自己的蓝色悬浮面板（实测 Claude Code 复现、纯 PS 不现）——
+    /// 组合开始时框已在游标处，冻结到组合结束。</summary>
+    private void UpdateImeBoxPosition()
+    {
+        if (_imeComposing) return;
+        var buf = _terminal.Buffer;
+        var row = Math.Clamp(buf.YBase + buf.Y - buf.ViewportY, 0, Math.Max(0, _terminal.Rows - 1));
+        var col = Math.Clamp(buf.X, 0, Math.Max(0, _terminal.Cols - 1));
+        var x = PadH + col * _cellW;
+        var y = PadV + row * _cellH;
+        if (x != _imeBoxX || y != _imeBoxY)
+        {
+            _imeBoxX = x;
+            _imeBoxY = y;
+            _imeBox.Margin = new Thickness(x, y, 0, 0);
+        }
+        var w = Math.Max(_cellW * 2, RenderSize.Width - x);
+        if (Math.Abs(_imeBox.Width - w) > 0.5) _imeBox.Width = w;
+        if (Math.Abs(_imeBox.Height - _cellH) > 0.5) _imeBox.Height = _cellH;
+        var fgBrush = ResolveColor(_terminal.Colors.Foreground, FallbackFg);
+        _imeBox.Foreground = fgBrush;
+        _imeBox.SelectionTextBrush = fgBrush;
+    }
+
+    private void AttachImeHook()
+    {
+        if (_hwndSource is not null) return;
+        if (PresentationSource.FromVisual(this) is not System.Windows.Interop.HwndSource src) return;
+        _imeHook ??= ImeWndProc;
+        src.AddHook(_imeHook);
+        _hwndSource = src;
+    }
+
+    private void DetachImeHook()
+    {
+        if (_hwndSource is not null && _imeHook is not null)
+            _hwndSource.RemoveHook(_imeHook);
+        _hwndSource = null;
+    }
+
+    /// <summary>组合起止的兜底通道（组合事件若被 TextBox 内部吞掉也能复位 _imeComposing；
+    /// WPF 官方 ImmComposition 证明 TextBox 输入会话下这些消息会投递到 HWND）。
+    /// 消息按 HWND 投递、多标签共享 HWND，只响应本框握焦点的。</summary>
+    private IntPtr ImeWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (!_imeBox.IsKeyboardFocused) return IntPtr.Zero;
+        if (msg == WM_IME_STARTCOMPOSITION) { _imeComposing = true; InvalidateVisual(); }
+        else if (msg == WM_IME_ENDCOMPOSITION) { _imeComposing = false; ScheduleImeFlush(); InvalidateVisual(); }
+        return IntPtr.Zero;
     }
 
     private void Emit(string seq)
