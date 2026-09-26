@@ -28,7 +28,7 @@
                             <!-- 右端当前色值（ShowHex 开启时显示）：按钮等宽拉伸的布局里填充右侧视觉重心 -->
                             <TextBlock Text="{Binding Hex, RelativeSource={RelativeSource AncestorType=local:ColorChipButton}}"
                                        Foreground="{DynamicResource MutedBrush}"
-                                       FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                                       FontFamily="{DynamicResource MonoFont}" FontSize="11"
                                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0"
                                        Visibility="{Binding ShowHex, RelativeSource={RelativeSource AncestorType=local:ColorChipButton},
                                                    Converter={StaticResource BoolToVis}}"/>
@@ -143,7 +143,7 @@
                                 ToolTip="自定义色预览"/>
                         <TextBlock Text="#" VerticalAlignment="Center" Margin="6,0,2,0"/>
                         <TextBox x:Name="HexBox" Width="62" MinHeight="0" Padding="4,2"
-                                 FontFamily="Cascadia Mono, Consolas" MaxLength="7"
+                                 FontFamily="{DynamicResource MonoFont}" MaxLength="7"
                                  InputMethod.IsInputMethodEnabled="False"
                                  ToolTip="十六进制色值（RRGGBB，如 FF8800），Enter 应用"
                                  TextChanged="HexBox_TextChanged" PreviewKeyDown="HexBox_KeyDown"/>

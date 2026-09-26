@@ -4,6 +4,7 @@
         xmlns:s="clr-namespace:SerialTool.App.Services"
         Title="自定义波特率" SizeToContent="WidthAndHeight"
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}" WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource UiFontFamily}" FontSize="{DynamicResource UiFontSize}"
         ResizeMode="NoResize" ShowInTaskbar="False">
     <StackPanel Margin="16" Width="260">
         <TextBlock Text="波特率（正整数，如 748800）：" Foreground="{DynamicResource MutedBrush}"/>

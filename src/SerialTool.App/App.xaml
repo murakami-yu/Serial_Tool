@@ -26,6 +26,9 @@
         <SolidColorBrush x:Key="HoverBrush" Color="#CCE4F7"/>
         <SolidColorBrush x:Key="SelectedBrush" Color="#B3D4F0"/>
         <SolidColorBrush x:Key="SeparatorBrush" Color="#E2E2E2"/>
+        <!-- 等宽字体资源（外观设置整实例替换；用户未选字体时保持此默认链，Mono/MonoRich/取色按钮引用）。
+             全局 UiFontFamily/UiFontSize 资源不在此预定义：不存在时 DynamicResource 不应用 → 窗口继承系统默认字体 -->
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
 
         <!-- 按钮：圆角边框（与输入框/下拉框同风格），悬停蓝边高亮 -->
         <Style TargetType="Button">
@@ -548,10 +551,10 @@
             </Setter>
         </Style>
 
-        <!-- 等宽输入：仅换字体族（字号与全局一致）；Cascadia 行高偏大，收紧行距使框高落回 28px 基线，
-             与普通输入框/下拉框/按钮同高（表格行内混排时高度一致） -->
+        <!-- 等宽输入：字体族引 MonoFont 资源（默认 Cascadia 链；外观设置选字体后整实例替换跟随），字号继承窗口全局；
+             Cascadia 行高偏大，收紧行距使框高落回 28px 基线，与普通输入框/下拉框/按钮同高（表格行内混排时高度一致） -->
         <Style x:Key="Mono" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Courier New"/>
+            <Setter Property="FontFamily" Value="{DynamicResource MonoFont}"/>
             <Setter Property="Padding" Value="6,2"/>
         </Style>
 
@@ -567,7 +570,7 @@
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="IsReadOnly" Value="True"/>
             <Setter Property="IsUndoEnabled" Value="False"/>
-            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Courier New"/>
+            <Setter Property="FontFamily" Value="{DynamicResource MonoFont}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RichTextBox">

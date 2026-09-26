@@ -214,9 +214,18 @@ public partial class TerminalWindow : Window
         return tab;
     }
 
-    /// <summary>外观设置改终端内容底色：全部标签的引擎默认背景 + 宿主边框 + 主连接遮罩同步换色。</summary>
+    /// <summary>外观设置变化：改终端内容底色 → 全部标签的引擎默认背景 + 宿主边框 + 主连接遮罩同步换色；
+    /// 改界面字体/字号 → 全部终端视图（主连接 + 各标签）换字体并重排列宽。</summary>
     private void OnAppearanceChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(Appearance.UiFontFamily) or nameof(Appearance.UiFontSize))
+        {
+            var (family, size) = TerminalView.ResolveFont();
+            _mainView.SetFont(family, size);
+            foreach (var t in _tabs)
+                t.Session.View.SetFont(family, size);
+            return;
+        }
         if (e.PropertyName != nameof(Appearance.TermContentBgHex)) return;
         var c = TerminalView.ThemeBackground;
         var hostBrush = new SolidColorBrush(c);

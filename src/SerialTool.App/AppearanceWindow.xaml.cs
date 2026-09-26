@@ -20,6 +20,14 @@ public partial class AppearanceWindow : Window
         foreach (var p in Appearance.Presets) PresetCombo.Items.Add(p.Name);
         PresetCombo.Items.Add(CustomLabel);
         RefreshPresetSelection();
+        // 界面字体列表：首项空串哨兵 =「跟随系统」；其余 = 系统字体按名排序（窗口每次打开新建，
+        // 构造即枚举天然懒加载；下拉面板已显式虚拟化）。SelectedValue 双向绑定在 ItemsSource 就绪后自动落位
+        var fonts = new List<string> { "" };
+        fonts.AddRange(System.Windows.Media.Fonts.SystemFontFamilies
+            .Select(f => f.Source)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+        FontCombo.ItemsSource = fonts;
+        FontSizeCombo.ItemsSource = new List<string> { "", "9", "10", "11", "12", "13", "14", "15", "16", "18", "20" };
         Appearance.Instance.PropertyChanged += OnAppearanceChanged;
         Closed += (_, _) => Appearance.Instance.PropertyChanged -= OnAppearanceChanged;
     }

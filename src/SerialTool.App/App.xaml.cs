@@ -58,8 +58,45 @@ public partial class App : Application
             case nameof(Appearance.SelectedHex):
                 SetBrush("SelectedBrush", ap.SelectedHex);
                 break;
+            case nameof(Appearance.UiFontFamily):
+            case nameof(Appearance.UiFontSize):
+                ApplyUiFont();
+                break;
         }
     }
+
+    /// <summary>等宽字体默认链（App.xaml 的 MonoFont 初始值单一事实源镜像）。</summary>
+    private static readonly FontFamily DefaultMonoFont = new("Cascadia Mono, Consolas, Courier New");
+
+    /// <summary>应用界面字体：合法字体族 → 全局 UiFontFamily + 等宽区 MonoFont 都换成用户字体；
+    /// 未设置/非法 → 移除全局资源（窗口回退系统默认字体）、MonoFont 恢复默认链。
+    /// 字号合法（6~72）→ 写入 UiFontSize 资源；否则移除（回退系统默认 12px）。
+    /// UiFontFamily/UiFontSize 两资源在 App.xaml 不预定义——不存在时 DynamicResource 不应用，天然等于「跟随系统」。</summary>
+    private void ApplyUiFont()
+    {
+        var ap = Appearance.Instance;
+        var name = ap.UiFontFamily.Trim();
+        if (name.Length > 0 && IsKnownFont(name))
+        {
+            var font = new FontFamily(name);
+            Resources["UiFontFamily"] = font;
+            Resources["MonoFont"] = font;
+        }
+        else
+        {
+            Resources.Remove("UiFontFamily");
+            Resources["MonoFont"] = DefaultMonoFont;
+        }
+
+        if (double.TryParse(ap.UiFontSize.Trim(), out var size) && size is >= 6 and <= 72)
+            Resources["UiFontSize"] = size;
+        else
+            Resources.Remove("UiFontSize");
+    }
+
+    /// <summary>字体族合法性：系统已安装字体名单内（大小写不敏感），防手改配置的坏值。</summary>
+    private static bool IsKnownFont(string name)
+        => Fonts.SystemFontFamilies.Any(f => string.Equals(f.Source, name, StringComparison.OrdinalIgnoreCase));
 
     private void SetBrush(string key, string hex)
     {

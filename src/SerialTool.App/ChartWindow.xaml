@@ -6,6 +6,7 @@
         Title="图表 — 时序 / 字段曲线"
         Width="680" Height="540" MinWidth="520" MinHeight="400"
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=ChartBgHex, Converter={StaticResource HexToBrush}}"
+        FontFamily="{DynamicResource UiFontFamily}" FontSize="{DynamicResource UiFontSize}"
         WindowStartupLocation="Manual">
 
     <!-- 图表独立窗口（不设 Owner，与主窗平级）：主窗顶部「波形」按钮打开（默认关闭，打开状态记忆）；

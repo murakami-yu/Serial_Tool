@@ -5,6 +5,7 @@
         xmlns:ctrl="clr-namespace:SerialTool.App.Controls"
         Title="外观设置" SizeToContent="WidthAndHeight"
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}"
+        FontFamily="{DynamicResource UiFontFamily}" FontSize="{DynamicResource UiFontSize}"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" ShowInTaskbar="False">
 
@@ -22,6 +23,65 @@
                       SelectionChanged="PresetCombo_SelectionChanged"/>
             <TextBlock Text="（预设整套应用，可再单项微调）" VerticalAlignment="Center"
                        Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="8,0,0,0"/>
+        </StackPanel>
+
+        <!-- 界面字体行：字体族下拉 + 字号下拉；SelectedValue 双向绑 Appearance 单例
+             （空串哨兵项 = 「跟随系统/默认」），选择即应用级联并落盘，与改色同链路。
+             字体名统一用系统消息字体渲染（曾试过逐项用自身字体渲染 = 所见即所得，实测符号字体
+             如 Bookshelf Symbol 07 的字母被映射成符号图形、名字成乱码，故弃）；
+             整框钉死 MessageFontFamily——用户已选符号字体时列表仍可读，能选回来。
+             行尾不放说明文字（窗口内容定宽 484，横向超宽会被裁切），说明收进 ToolTip。
+             系统字体项数百个，显式虚拟化面板防下拉卡顿 -->
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="界面字体：" VerticalAlignment="Center"
+                       Foreground="{DynamicResource MutedBrush}"/>
+            <ComboBox x:Name="FontCombo" Width="260" Margin="8,0,0,0" VerticalAlignment="Center"
+                      FontFamily="{x:Static SystemFonts.MessageFontFamily}"
+                      SelectedValue="{Binding Source={x:Static s:Appearance.Instance}, Path=UiFontFamily}"
+                      ToolTip="全部界面文字的字体族（即时生效、自动保存）；含 Webdings 等符号字体——选中后界面会整体乱码，选回「（跟随系统）」即可恢复；数据区建议等宽字体，非等宽会导致列错位">
+                <ComboBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                </ComboBox.ItemsPanel>
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <!-- 空串哨兵项显示「（跟随系统）」，其余项显示字体名（系统消息字体，非该字体自渲染） -->
+                        <TextBlock>
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="{Binding}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding}" Value="">
+                                            <Setter Property="Text" Value="（跟随系统）"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <ComboBox x:Name="FontSizeCombo" Width="78" Margin="8,0,0,0" VerticalAlignment="Center"
+                      SelectedValue="{Binding Source={x:Static s:Appearance.Instance}, Path=UiFontSize}"
+                      ToolTip="全部界面文字字号（px）；「默认」= 界面 12px / 终端 14px">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock>
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="{Binding}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding}" Value="">
+                                            <Setter Property="Text" Value="默认"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
         </StackPanel>
 
         <!-- 两列等宽：左=各界面背景色（5 项，行 1-5），右=控件颜色（8 项，行 1-8），

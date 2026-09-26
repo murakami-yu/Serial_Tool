@@ -28,7 +28,8 @@ namespace SerialTool.App.Controls;
 /// </summary>
 public class TerminalView : Grid
 {
-    private const double FontSize = 14.0;
+    /// <summary>终端字号（DIP）。默认 14；外观设置选了全局字号后由 SetFont 跟随。</summary>
+    private double _fontSize = 14.0;
     private const double PadH = 3.0;   // 左右内边距（DIP）
     private const double PadV = 3.0;
     private const int ScrollWheelLines = 3;
@@ -41,11 +42,13 @@ public class TerminalView : Grid
     private bool _cursorOn = true;
     private double _pixelsPerDip = 1.0;
 
-    private readonly FontFamily _font = new("Cascadia Mono, SimSun"); // VS Code 终端方案（2026-09-19 用户对比选定）：英文 Cascadia Mono（等宽，字距天然均匀），中文宋体回退（GB2312 字符集标准字体）
-    private readonly Typeface _typeface;
-    private readonly Typeface _typefaceBold;
-    private readonly Typeface _typefaceItalic;
-    private readonly Typeface _typefaceBoldItalic;
+    // 默认 VS Code 终端方案（2026-09-19 用户对比选定）：英文 Cascadia Mono（等宽，字距天然均匀），中文宋体回退（GB2312 字符集标准字体）；
+    // 用户在外观设置选了全局字体后由 SetFont 运行时更换
+    private FontFamily _font = new("Cascadia Mono, SimSun");
+    private Typeface _typeface = null!;
+    private Typeface _typefaceBold = null!;
+    private Typeface _typefaceItalic = null!;
+    private Typeface _typefaceBoldItalic = null!;
     private double _cellW = 8.0, _cellH = 18.0;  // 实测格宽/行高（DIP）
     private bool _metricsReady;
 
@@ -91,6 +94,8 @@ public class TerminalView : Grid
         _typefaceBold = new Typeface(_font, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
         _typefaceItalic = new Typeface(_font, FontStyles.Italic, FontWeights.Normal, FontStretches.Normal);
         _typefaceBoldItalic = new Typeface(_font, FontStyles.Italic, FontWeights.Bold, FontStretches.Normal);
+        var (initFont, initSize) = ResolveFont(); // 构造即对齐外观设置当前字体（此后由 TerminalWindow 广播变化）
+        SetFont(initFont, initSize);
 
         Cursor = Cursors.IBeam;
         ClipToBounds = true;
@@ -176,7 +181,7 @@ public class TerminalView : Grid
 
     private FormattedText MakeText(string text, Typeface face, Brush brush)
         => new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-               face, FontSize, brush, _pixelsPerDip);
+               face, _fontSize, brush, _pixelsPerDip);
 
     // ---------- 渲染 ----------
 
@@ -436,6 +441,39 @@ public class TerminalView : Grid
         InvalidateVisual();
     }
 
+    /// <summary>外观设置当前应使用的终端字体：用户选了字体族/字号则跟随，否则维持 VS Code 方案默认。
+    /// 构造与 TerminalWindow 广播字体变化时都经此解析（任何路径 new 的实例都一致）。</summary>
+    public static (FontFamily family, double size) ResolveFont()
+    {
+        var ap = Appearance.Instance;
+        var name = ap.UiFontFamily.Trim();
+        var size = double.TryParse(ap.UiFontSize.Trim(), out var v) && v is >= 6 and <= 72 ? v : 14.0;
+        return name.Length > 0 ? (new FontFamily(name), size) : (new FontFamily("Cascadia Mono, SimSun"), 14.0);
+    }
+
+    /// <summary>运行时换字体（外观设置）：重建 4 个字形面 + 度量失效 + 文字缓存整清 + IME 框跟随 + 重绘。
+    /// 格宽/行高重算后 OnRender 按新度量反推 cols/rows 自动 Resize（reflow）并发 Resized（PTY 窗口变更联动）。</summary>
+    public void SetFont(FontFamily family, double size)
+    {
+        _font = family;
+        _fontSize = size;
+        _typeface = new Typeface(_font, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        _typefaceBold = new Typeface(_font, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+        _typefaceItalic = new Typeface(_font, FontStyles.Italic, FontWeights.Normal, FontStretches.Normal);
+        _typefaceBoldItalic = new Typeface(_font, FontStyles.Italic, FontWeights.Bold, FontStretches.Normal);
+        _metricsReady = false;          // 下次 OnRender 的 EnsureMetrics 按新字形面重算格宽/行高
+        _ftCache.Clear();              // FormattedText 与 Typeface 绑定，必须整清
+        EnsureMetrics();
+        if (_imeBox is not null)
+        {
+            _imeBox.FontFamily = _font;
+            _imeBox.FontSize = _fontSize;
+            _imeBox.Width = _cellW * 2;
+            _imeBox.Height = _cellH;
+        }
+        InvalidateVisual();
+    }
+
     /// <summary>终端主题：Campbell 调色板（Windows Terminal 默认）+ 外观设置的内容底色
     /// （默认 VS Code 式柔和深底 #1E1E1E）。每实例新建——背景色取自外观设置单例，
     /// 静态共享会被「后建实例改色」牵连。仅引擎默认色——对端 OSC 10/11/104 仍可运行时改写。</summary>
@@ -598,7 +636,7 @@ public class TerminalView : Grid
             Padding = new Thickness(0),
             Margin = new Thickness(0),
             FontFamily = _font,
-            FontSize = FontSize,
+            FontSize = _fontSize,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             IsHitTestVisible = false,

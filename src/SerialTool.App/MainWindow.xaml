@@ -8,6 +8,7 @@
         Width="1290" Height="740" MinWidth="1290" MinHeight="660"
         SizeChanged="MainWindow_SizeChanged"
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}"
+        FontFamily="{DynamicResource UiFontFamily}" FontSize="{DynamicResource UiFontSize}"
         WindowStartupLocation="CenterScreen">
     <Window.DataContext>
         <vm:MainViewModel/>

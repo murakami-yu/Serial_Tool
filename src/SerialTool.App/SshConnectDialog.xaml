@@ -4,6 +4,7 @@
         xmlns:s="clr-namespace:SerialTool.App.Services"
         Title="新建 SSH 会话" SizeToContent="WidthAndHeight"
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}" WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource UiFontFamily}" FontSize="{DynamicResource UiFontSize}"
         ResizeMode="NoResize" ShowInTaskbar="False">
 
     <!-- 终端窗「+ SSH」入口：独立会话连接（与主面板连接互不影响）。

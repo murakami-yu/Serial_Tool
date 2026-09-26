@@ -79,6 +79,16 @@ public sealed partial class Appearance : ObservableObject
     [ObservableProperty]
     private string _selectedHex = DefaultSelected;
 
+    // ---------- 界面字体（全局：字体族 + 字号；空 = 未设置，维持系统默认/等宽区默认链） ----------
+
+    /// <summary>全局界面字体族名（空 = 跟随系统；等宽区空时回退默认 Cascadia 链，设置后跟随用户字体）。</summary>
+    [ObservableProperty]
+    private string _uiFontFamily = "";
+
+    /// <summary>全局字号（字符串存储与 HEX 一致；空 = 默认 12px/终端 14px，合法范围 6~72）。</summary>
+    [ObservableProperty]
+    private string _uiFontSize = "";
+
     private Appearance() { }
 
     // ---------- 预设主题（整套 13 项打包；选中态不落盘，由 MatchPreset 按当前值反推） ----------

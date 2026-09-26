@@ -4,6 +4,7 @@
         xmlns:s="clr-namespace:SerialTool.App.Services"
         Title="终端" Width="900" Height="560" MinWidth="600" MinHeight="280"
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=TerminalBgHex, Converter={StaticResource HexToBrush}}"
+        FontFamily="{DynamicResource UiFontFamily}" FontSize="{DynamicResource UiFontSize}"
         WindowStartupLocation="Manual">
 
     <!-- 终端独立窗口（多会话标签版）：

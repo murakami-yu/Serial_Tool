@@ -250,6 +250,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>字体族合法：系统已安装字体名单内（大小写不敏感），防手改配置的坏值。</summary>
+    private static bool IsKnownFont(string name)
+        => System.Windows.Media.Fonts.SystemFontFamilies.Any(f => string.Equals(f.Source, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>字号合法：可解析且 6~72。</summary>
+    private static bool IsValidFontSize(string text)
+        => double.TryParse(text.Trim(), out var v) && v is >= 6 and <= 72;
+
     /// <summary>时序图是否跟随最新（持久化；取消后可自由缩放平移）。</summary>
     [ObservableProperty]
     private bool _waveFollow = true;
@@ -1247,7 +1255,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string Muted = Services.Appearance.DefaultMuted,
         string Accent = Services.Appearance.DefaultAccent,
         string Hover = Services.Appearance.DefaultHover,
-        string Selected = Services.Appearance.DefaultSelected);
+        string Selected = Services.Appearance.DefaultSelected,
+        string UiFontFamily = "", string UiFontSize = "");
 
     private static string UiSettingsPath
         => System.IO.Path.Combine(AppContext.BaseDirectory, "Config", "ui_settings.json");
@@ -1295,6 +1304,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (s.Accent is { } ac && IsValidHex(ac)) ap.AccentHex = ac;
                     if (s.Hover is { } hv && IsValidHex(hv)) ap.HoverHex = hv;
                     if (s.Selected is { } se && IsValidHex(se)) ap.SelectedHex = se;
+                    // 界面字体（全局）：字体族须为系统已安装（防手改坏值），字号 6~72；坏值按默认（跟随系统）启动
+                    if (!string.IsNullOrWhiteSpace(s.UiFontFamily) && IsKnownFont(s.UiFontFamily.Trim()))
+                        ap.UiFontFamily = s.UiFontFamily.Trim();
+                    if (!string.IsNullOrWhiteSpace(s.UiFontSize) && IsValidFontSize(s.UiFontSize))
+                        ap.UiFontSize = s.UiFontSize.Trim();
                 }
             }
         }
@@ -1316,7 +1330,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     SshHost, SshPort, SshUser, SshAuthIndex, SshKeyPath,
                     ap.MainBgHex, ap.TerminalBgHex, ap.ChartBgHex, ap.TemplateBgHex, ap.TermContentBgHex,
                     ap.PanelHex, ap.ButtonBgHex, ap.BorderHex, ap.TextHex, ap.MutedHex, ap.AccentHex,
-                    ap.HoverHex, ap.SelectedHex),
+                    ap.HoverHex, ap.SelectedHex, ap.UiFontFamily, ap.UiFontSize),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
