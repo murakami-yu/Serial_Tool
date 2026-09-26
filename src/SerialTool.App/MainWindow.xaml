@@ -447,7 +447,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="备注" Width="*" MinWidth="80">
+                                    <DataGridTemplateColumn Header="备注" Width="120" CanUserResize="False">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}"
