@@ -13,9 +13,9 @@ using SerialTool.Backends;
 using SerialTool.Backends.Ssh;
 namespace SerialTool.App;
 
-/// <summary>终端独立窗口（多会话标签）：主连接固定第一标签（后端归 MainViewModel），
+/// <summary>终端独立窗口（多会话标签，不设 Owner，与主窗平级的顶层窗口）：主连接固定第一标签（后端归 MainViewModel），
 /// 独立 SSH 会话各自持 backend + TerminalView，关标签即断开。
-/// 取消勾选/X=销毁（延迟回写勾选防 Closing 重入）；主窗退出经 CloseForReal 真关并清理全部会话。</summary>
+/// X=销毁（延迟回写 ShowTerminalPanel=false 防 Closing 重入）；主窗退出经 CloseForReal 真关并清理全部会话。</summary>
 public partial class TerminalWindow : Window
 {
     /// <summary>标签页与视图的配对（Session.Tag 存此记录；Host = 终端圆角宿主边框，外观改色时同步底色）。</summary>
@@ -388,7 +388,7 @@ public partial class TerminalWindow : Window
 
     // ---------- 窗口生命周期 ----------
 
-    /// <summary>主窗退出时调用：绕过「X = 取消勾选」语义，真正关闭。</summary>
+    /// <summary>主窗退出时调用：绕过「X = 回写关闭」语义，真正关闭。</summary>
     public void CloseForReal()
     {
         _realClose = true;
@@ -400,7 +400,7 @@ public partial class TerminalWindow : Window
         if (!_realClose)
         {
             e.Cancel = true;
-            // 回写「终端 = 取消勾选」延迟到关闭序列结束：同步回写会经主窗 ApplyTerminalPanelState
+            // 回写「终端 = 关闭」延迟到关闭序列结束：同步回写会经主窗 ApplyTerminalPanelState
             // 在本窗 Closing 进行中再次 Close()（重入抛 InvalidOperationException，同图表窗）
             Dispatcher.BeginInvoke(new Action(() =>
             {

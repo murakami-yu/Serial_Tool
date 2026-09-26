@@ -41,8 +41,8 @@ public partial class MainWindow : Window
             vm.HostKeyChallenge += OnHostKeyChallenge;
             vm.PropertyChanged += OnVmPropertyChanged;
         }
-        // 主窗 Closing 先于 owned 窗口的关闭流程：先把图表窗切到真实关闭模式，
-        // 否则它的「X = 取消勾选」语义会取消关闭，导致主窗关了进程却不退
+        // 主窗 Closing 先于两子窗口的关闭流程：先把它们切到真实关闭模式，
+        // 否则其「X = 回写关闭」语义会取消关闭，导致主窗关了进程却不退
         Closing += (_, _) => { _chartWindow?.CloseForReal(); _terminalWindow?.CloseForReal(); };
         Closed += (_, _) =>
         {
@@ -54,8 +54,8 @@ public partial class MainWindow : Window
                 vm.Dispose();
             }
         };
-        // 按持久化设置应用面板初始状态（绑定触发的事件可能早于元素就绪；
-        // 且记忆为 false 时复选框无变化事件，必须在此兜底）
+        // 按持久化设置应用面板初始状态（设置在 VM 构造期加载、早于本类的属性变化订阅，
+        // 之后无变化事件，必须在此兜底）
         Dispatcher.BeginInvoke(new Action(() =>
         {
             ApplyFramesPanelState();
@@ -235,20 +235,24 @@ public partial class MainWindow : Window
         FramesSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // ---------- 图表窗口（时序 / 字段曲线，独立窗口）显示/隐藏 ----------
+    // ---------- 图表窗口（时序 / 字段曲线，独立顶层窗口）打开 / 销毁 ----------
 
-    // 每次勾选都新建窗口、取消勾选即销毁（不 Hide）：本机 SkiaSharp 表面在窗口 Hide 后会永久失效
+    // 每次打开都新建窗口、关闭即销毁（不 Hide）：本机 SkiaSharp 表面在窗口 Hide 后会永久失效
     //（重显后 Refresh/交互全都不再出画面，坐标轴消失的真正根因），重建是唯一可靠恢复方式。
-    // 用户拖出的位置/尺寸记在字段里，重开时还原。用户点图表窗的 X ⇔ 取消勾选（走销毁分支）。
+    // 用户拖出的位置/尺寸记在字段里，重开时还原。用户点图表窗的 X ⇔ 回写 ShowWavePanel=false（走销毁分支）。
+    // 不设 Owner：owned 窗口被 Win32 绑进主窗的激活组——显示/激活从属窗会强制带出（含最小化中的）主窗、
+    // 永远浮于主窗之上、随主窗最小化/还原联动（2026-09-26 用户报「新窗强制拉起主窗」的根因）。
     private ChartWindow? _chartWindow;
     private Rect? _chartBounds; // 上次关闭时的窗口位置尺寸（工作区坐标 DIP）
 
-    private void WavePanelToggle_Changed(object sender, RoutedEventArgs e)
+    private void WavePanelButton_Click(object sender, RoutedEventArgs e)
     {
-        // XAML 初始化期（绑定套用记忆值触发 Checked）：主窗尚未 Show，此时给图表窗设 Owner 会抛
-        // 「无法在 Owner 设置为之前未显示的 Window」——由 Loaded 时的初始应用兜底（与多帧面板同一套路）
-        if (!IsLoaded) return;
-        ApplyWavePanelState();
+        if (DataContext is not MainViewModel vm) return;
+        // 已开着：带到前台；没开：置 true 经 PropertyChanged → ApplyWavePanelState 开窗
+        if (vm.ShowWavePanel)
+            _chartWindow?.Activate();
+        else
+            vm.ShowWavePanel = true;
     }
 
     private void ApplyWavePanelState()
@@ -258,7 +262,7 @@ public partial class MainWindow : Window
         {
             if (_chartWindow is null)
             {
-                _chartWindow = new ChartWindow(vm) { Owner = this };
+                _chartWindow = new ChartWindow(vm);
                 if (_chartBounds is Rect b)
                     RestoreChartBounds(b);
                 else
@@ -304,6 +308,12 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(MainViewModel.ConnTypeIndex))
             ApplyBottomBarHeight();
+        // 两子窗口开关属性（复选框时代的 Checked/Unchecked 事件链已不存在，统一走属性变化）：
+        // 按钮置 true 开窗 / 窗口 X 回写 false 销毁；早于 Loaded 的变化由构造期的初始应用兜底
+        else if (e.PropertyName == nameof(MainViewModel.ShowWavePanel) && IsLoaded)
+            ApplyWavePanelState();
+        else if (e.PropertyName == nameof(MainViewModel.ShowTerminalPanel) && IsLoaded)
+            ApplyTerminalPanelState();
     }
 
     /// <summary>底部条行高按连接方式设定：行内容行数不同（SSH 多认证明细行），
@@ -321,18 +331,21 @@ public partial class MainWindow : Window
         MinHeight = ssh ? WindowMinHeightSsh : WindowMinHeightNormal;
     }
 
-    // ---------- 终端窗口（VT100/xterm 终端仿真，独立窗口）显示/隐藏 ----------
+    // ---------- 终端窗口（VT100/xterm 终端仿真，独立顶层窗口）打开 / 销毁 ----------
 
-    // 与图表窗同一套销毁/重建模式（含 Closing 重入顺序）：勾选新建 owned 窗、取消勾选/X 销毁，
-    // 位置尺寸记在字段里重开还原
+    // 与图表窗同一套销毁/重建模式（含 Closing 重入顺序）：按钮打开新建独立窗、X/回写 false 销毁，
+    // 位置尺寸记在字段里重开还原（同样不设 Owner，理由见图表窗一节）
     private TerminalWindow? _terminalWindow;
     private Rect? _terminalBounds;
 
-    private void TerminalPanelToggle_Changed(object sender, RoutedEventArgs e)
+    private void TerminalPanelButton_Click(object sender, RoutedEventArgs e)
     {
-        // XAML 初始化期（绑定套用记忆值触发 Checked）由 Loaded 时的初始应用兜底（与图表窗同套路）
-        if (!IsLoaded) return;
-        ApplyTerminalPanelState();
+        if (DataContext is not MainViewModel vm) return;
+        // 已开着：带到前台；没开：置 true 经 PropertyChanged → ApplyTerminalPanelState 开窗
+        if (vm.ShowTerminalPanel)
+            _terminalWindow?.Activate();
+        else
+            vm.ShowTerminalPanel = true;
     }
 
     private void ApplyTerminalPanelState()
@@ -342,7 +355,7 @@ public partial class MainWindow : Window
         {
             if (_terminalWindow is null)
             {
-                _terminalWindow = new TerminalWindow(vm) { Owner = this };
+                _terminalWindow = new TerminalWindow(vm);
                 if (_terminalBounds is Rect b)
                     RestoreTerminalBounds(b);
                 else

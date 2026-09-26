@@ -181,11 +181,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showFramesPanel = true;
 
-    /// <summary>时序图面板是否显示（持久化）。</summary>
+    /// <summary>图表窗口是否打开（独立顶层窗口，持久化）。</summary>
     [ObservableProperty]
     private bool _showWavePanel = true;
 
-    /// <summary>终端窗口是否显示（VT100/xterm 终端仿真视图，持久化；默认关闭）。</summary>
+    /// <summary>终端窗口是否打开（VT100/xterm 终端仿真独立窗口，持久化；默认关闭）。</summary>
     [ObservableProperty]
     private bool _showTerminalPanel;
 
@@ -1229,7 +1229,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // ---------- UI 设置持久化 ----------
 
     // 可选参数默认值：旧配置缺字段时按此处理。
-    // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需勾选，勾选状态仍记忆
+    // 波形面板默认关闭（2026-09-03 用户要求）：启动不自动弹图表窗，用户按需打开，打开状态仍记忆
     private sealed record UiSettings(bool ShowFramesPanel, bool ShowWavePanel = false, bool WaveFollow = true,
         string TxColor = "#0078D7", string RxColor = "#1E1E1E", string Baud = "115200",
         bool TxCyclic = false, int TxPeriodMs = 1000, bool ShowTerminalPanel = false,

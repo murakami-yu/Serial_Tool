@@ -15,6 +15,7 @@
 
     <!-- 窗口 MinWidth=1290：顶部功能条不换行阈值在加入「终端」复选框后实测 ~1246
          （2026-09-19 截图实测；原 2026-09-01 的 ~1185 不含终端）+ 字体度量余量；
+         2026-09-26 「波形/终端」复选框改按钮（按钮 MinWidth 64，两枚共加宽 ~38，阈值 ~1284 仍在 1290 内）；
          再窄这些行会折行错位。默认宽与 MinWidth 一致，启动即不换行。
          MinHeight=660 为串口/TCP 模式值；SSH 模式底条加高，代码同步抬到 710 -->
 
@@ -80,14 +81,10 @@
                          Width="110" Margin="6,0,0,0" VerticalAlignment="Center"
                          Style="{StaticResource Mono}"
                          ToolTip="HEX 子串（如 AA 55，忽略空格/大小写）或文本子串"/>
-                <CheckBox Content="波形" IsChecked="{Binding ShowWavePanel}" Margin="16,0,0,0"
-                          VerticalAlignment="Center"
-                          ToolTip="显示 / 隐藏图表窗口（独立窗口，状态记忆；关窗 = 取消勾选）"
-                          Checked="WavePanelToggle_Changed" Unchecked="WavePanelToggle_Changed"/>
-                <CheckBox Content="终端" IsChecked="{Binding ShowTerminalPanel}" Margin="8,0,0,0"
-                          VerticalAlignment="Center"
-                          ToolTip="显示 / 隐藏终端窗口（VT100/xterm 终端仿真：串口/TCP 字节流按终端方式渲染，键盘输入直接发往对端，支持滚回/复制粘贴）"
-                          Checked="TerminalPanelToggle_Changed" Unchecked="TerminalPanelToggle_Changed"/>
+                <Button Content="波形" Click="WavePanelButton_Click" Margin="16,0,0,0" VerticalAlignment="Center"
+                        ToolTip="打开图表窗口（独立窗口，可脱离主窗摆放；上次退出时开着则随启动打开，关闭用窗口 X）"/>
+                <Button Content="终端" Click="TerminalPanelButton_Click" Margin="8,0,0,0" VerticalAlignment="Center"
+                        ToolTip="打开终端窗口（VT100/xterm 终端仿真：串口/TCP 字节流按终端方式渲染，键盘输入直接发往对端，支持滚回/复制粘贴；独立窗口，关闭用窗口 X）"/>
                         <CheckBox Content="多帧面板" IsChecked="{Binding ShowFramesPanel}" Margin="16,0,0,0"
                                   VerticalAlignment="Center"
                                   Checked="FramesPanelToggle_Changed" Unchecked="FramesPanelToggle_Changed"
@@ -95,7 +92,7 @@
             </WrapPanel>
         </GroupBox>
 
-        <!-- ===== 左列：接收区（图表面板已迁独立窗口 ChartWindow，由顶部「波形」复选框控制显隐） ===== -->
+        <!-- ===== 左列：接收区（图表面板已迁独立窗口 ChartWindow，由顶部「波形」按钮打开） ===== -->
         <!-- 左列容器裁切越界渲染：接收区无论内容多高，绘制都限制在本区内，绝不覆盖下方框架；
              顶部 10 与右列面板/底部条对齐，各框架垂直间距统一 -->
         <Grid Grid.Row="1" Grid.Column="0" Margin="0,10,0,0" ClipToBounds="True">

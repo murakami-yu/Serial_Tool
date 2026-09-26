@@ -8,7 +8,7 @@
         Background="{Binding Source={x:Static s:Appearance.Instance}, Path=ChartBgHex, Converter={StaticResource HexToBrush}}"
         WindowStartupLocation="Manual">
 
-    <!-- 图表独立窗口：主窗顶部「波形」复选框控制显隐（默认关闭，勾选状态记忆）；
+    <!-- 图表独立窗口（不设 Owner，与主窗平级）：主窗顶部「波形」按钮打开（默认关闭，打开状态记忆）；
          Manual 启动位置由主窗定位（贴主窗右侧）；
          XAML 的 MinWidth/MinHeight 只是兜底，真实最小尺寸由 OnSourceInitialized 按内容完整显示实测标定 -->
 

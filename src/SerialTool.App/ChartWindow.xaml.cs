@@ -2,9 +2,9 @@ using System.Windows;
 using SerialTool.App.ViewModels;
 namespace SerialTool.App;
 
-/// <summary>图表独立窗口：时序图 / 字段曲线。主窗顶部「波形」复选框控制（状态记忆）。
-/// 取消勾选即销毁本窗、重新勾选新建（主窗记忆位置尺寸）——不用 Hide/重显。
-/// 用户点 X ⇔ 取消勾选「波形」（延迟回写避免 Closing 重入）；主窗退出或销毁时经 CloseForReal 真正关闭并退订。</summary>
+/// <summary>图表独立窗口（不设 Owner，与主窗平级的顶层窗口）：时序图 / 字段曲线。主窗顶部「波形」按钮打开。
+/// 销毁后重开新建（主窗记忆位置尺寸）——不用 Hide/重显。
+/// 用户点 X ⇔ 回写 ShowWavePanel=false（延迟回写避免 Closing 重入）；主窗退出或销毁时经 CloseForReal 真正关闭并退订。</summary>
 public partial class ChartWindow : Window
 {
     private bool _realClose;
@@ -40,7 +40,7 @@ public partial class ChartWindow : Window
     private void RefreshAllDeferred()
         => Dispatcher.BeginInvoke(new Action(RefreshAll), System.Windows.Threading.DispatcherPriority.Background);
 
-    /// <summary>主窗退出时调用：绕过「X = 取消勾选」语义，真正关闭。</summary>
+    /// <summary>主窗退出时调用：绕过「X = 回写关闭」语义，真正关闭。</summary>
     public void CloseForReal()
     {
         _realClose = true;
@@ -96,7 +96,7 @@ public partial class ChartWindow : Window
         if (!_realClose)
         {
             e.Cancel = true;
-            // 回写「波形 = 取消勾选」必须延迟到本次（已取消的）关闭序列完全结束：同步回写会经
+            // 回写「波形 = 关闭」必须延迟到本次（已取消的）关闭序列完全结束：同步回写会经
             // 主窗 ApplyWavePanelState 在本窗 Closing 进行中再次 Close()（重入），外层关闭序列
             // 继续在已关闭窗口上执行，抛 InvalidOperationException
             //（"在窗口关闭期间，无法将可见性设置为可见，也无法调用 Show…"，VerifyNotClosing）
