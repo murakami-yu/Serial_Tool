@@ -124,6 +124,8 @@ public static class CrashLogger
             sb.AppendLine();
             sb.AppendLine("请将本文件与同名 .dmp 一并发回诊断；.dmp 可用 Visual Studio / WinDbg 打开查看全部线程栈。");
             File.WriteAllText(logPath, sb.ToString(), Encoding.UTF8);
+            // 运行日志同步一笔：事后可按时间线把崩溃与之前的操作序列对齐
+            AppLog.Error($"崩溃诊断已写入 {logPath}（{kind}）");
 
             if (withDump) TryWriteDump(basePath + ".dmp");
         }

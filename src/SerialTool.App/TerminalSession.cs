@@ -39,6 +39,7 @@ public sealed class TerminalSession : IDisposable
         backend.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);        // 读线程 → 线程安全入队
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
+            Services.AppLog.Error($"独立 SSH 会话中断（{title}）：{msg}");
             s.Status = "已断开：" + msg;
         });
         view.InputEmitted += bytes =>
@@ -61,6 +62,7 @@ public sealed class TerminalSession : IDisposable
         backend.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
+            Services.AppLog.Error($"独立 Telnet 会话中断（{title}）：{msg}");
             s.Status = "已断开：" + msg;
         });
         view.InputEmitted += bytes =>
@@ -78,6 +80,7 @@ public sealed class TerminalSession : IDisposable
         con.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
         con.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
+            Services.AppLog.Info($"本地终端会话退出（{title}）：{msg}");
             s.Status = "已退出：" + msg;
         });
         view.InputEmitted += bytes =>
