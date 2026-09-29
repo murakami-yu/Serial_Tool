@@ -35,6 +35,18 @@ public partial class MainWindow : Window
         InitializeComponent();
         // 清掉 RichTextBox 初始空 Paragraph，首行前不留空行
         RxOutput.Document.Blocks.Clear();
+        // 跟随滚动的真正落点：ScrollChanged 在布局吸收完新增内容之后触发，此刻 ExtentHeight
+        // 已是新值，ScrollToBottom 落的才是真底部。Tick 内同步 ScrollToEnd 读到的是布局前的
+        // 旧 extent（WPF 滚动量只在布局阶段刷新），被钳在上一批的底部、新数据压在视口下方
+        // ——「跟随最新跟不上数据」的根因（2026-09-29 修复）
+        RxOutput.Loaded += (_, _) =>
+        {
+            if (_rxScroll is null && RxOutput.Template?.FindName("PART_ContentHost", RxOutput) is ScrollViewer sv)
+            {
+                _rxScroll = sv;
+                sv.ScrollChanged += RxScroll_Changed;
+            }
+        };
         if (DataContext is MainViewModel vm)
         {
             vm.RxRendered += OnRxRendered;
@@ -401,9 +413,28 @@ public partial class MainWindow : Window
     // 已渲染字符计数（截断判据；自维护，避免每拍读 RxOutput.Text 全串）
     private int _rxChars;
 
+    /// <summary>接收框模板内 ScrollViewer（PART_ContentHost）：跟随滚动由其 ScrollChanged 驱动。</summary>
+    private ScrollViewer? _rxScroll;
+
     /// <summary>跟随策略：勾选"跟随最新"且鼠标不在框上（悬停 = 暂停查看）。</summary>
     private bool FollowLatest()
         => DataContext is MainViewModel { AutoScroll: true } && !RxOutput.IsMouseOver;
+
+    /// <summary>内容增删（追加/截断/重排）使 extent 变化即补滚到底：ScrollChanged 由布局后触发，
+    /// 此时拿到的 ExtentHeight 已含新内容，是唯一能落到"真底部"的时机；用户主动滚动
+    /// （extent 不变）不介入，不抢滚动条。</summary>
+    private void RxScroll_Changed(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.ExtentHeightChange != 0 && FollowLatest())
+            ((ScrollViewer)sender).ScrollToBottom();
+    }
+
+    /// <summary>滚到真底部：推迟到 Loaded 优先级（布局完成之后）再执行——同步 ScrollToEnd
+    /// 读到的 extent 尚未计入刚追加的内容、会被钳在旧底部。执行时复核跟随条件
+    /// （调度间隙里悬停/取消勾选则不抢滚动条）。</summary>
+    private void ScrollRxToEnd()
+        => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+            new Action(() => { if (FollowLatest()) RxOutput.ScrollToEnd(); }));
 
     private void OnRxRendered(object? sender, RxRender r)
     {
@@ -415,21 +446,19 @@ public partial class MainWindow : Window
                 break;
 
             case RxRenderKind.Append:
+                // 跟随滚动不在追加点同步做（布局未跑、ScrollToEnd 只会落到旧底部），
+                // 统一由 RxScroll_Changed 在布局后落位
                 AppendSegments(r.Segments);
                 TrimIfNeeded();
-                if (FollowLatest())
-                    RxOutput.ScrollToEnd();
                 break;
 
             case RxRenderKind.Full:
-                // 显示模式/颜色切换全量重绘：恢复原滚动位置
+                // 显示模式/颜色切换全量重绘：恢复原滚动位置；跟随模式由 RxScroll_Changed 布局后落底
                 var offset = RxOutput.VerticalOffset;
                 RxOutput.Document.Blocks.Clear();
                 _rxChars = 0;
                 AppendSegments(r.Segments);
                 RxOutput.ScrollToVerticalOffset(offset);
-                if (FollowLatest())
-                    RxOutput.ScrollToEnd();
                 break;
         }
     }
@@ -472,20 +501,20 @@ public partial class MainWindow : Window
         _rxChars -= removed;
     }
 
-    /// <summary>悬停暂停结束：跟随模式下立即补齐到最新。</summary>
+    /// <summary>悬停暂停结束：跟随模式下立即补齐到最新（走 ScrollRxToEnd 等布局后落真底部）。</summary>
     private void RxOutput_MouseLeave(object sender, MouseEventArgs e)
     {
         if (DataContext is MainViewModel { AutoScroll: true })
-            RxOutput.ScrollToEnd();
+            ScrollRxToEnd();
     }
 
     /// <summary>重新勾选"跟随最新"：立即跳到最新（若正在悬停则等移出后再跟）。
-    /// XAML 初始化期（RxOutput 尚未构造）直接跳过。</summary>
+    /// XAML 初始化期绑定回推也会触发本事件——延迟回调执行时 RxOutput 必已构造。</summary>
     private void AutoScroll_OnChecked(object sender, RoutedEventArgs e)
     {
         if (RxOutput is null || RxOutput.IsMouseOver)
             return;
-        RxOutput.ScrollToEnd();
+        ScrollRxToEnd();
     }
 
     // ---------- SSH 连接（凭据回写 + 私钥选择 + 主机指纹确认弹窗） ----------
@@ -524,6 +553,7 @@ public partial class MainWindow : Window
     /// <summary>外观设置（各界面背景色 + 控件级配色）：模态小窗，ColorChipButton 绑 Appearance 单例即时生效。</summary>
     private void Appearance_Click(object sender, RoutedEventArgs e)
     {
+        Services.AppLog.Info("打开外观设置");
         var win = new AppearanceWindow { Owner = this };
         win.ShowDialog();
     }
