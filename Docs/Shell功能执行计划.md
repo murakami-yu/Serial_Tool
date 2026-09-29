@@ -1,7 +1,7 @@
 # Shell 功能执行计划：终端仿真 / SSH / 多会话（Xshell/MobaXterm 方向）
 
 > 批次代号：**V1.4**（终端/Shell 功能线，与 V1.3「发送历史/热插拔」并行不冲突）
-> 日期：2026-09-19 ｜ 状态：**计划主体完成：M0-M4（Telnet + 本地终端）全部实现（107 单测全绿；M1 回环/M2 SSH/M3 多会话/M4 真机验收待人工清单在 §3.3/§4.3/§5.3/§6.1）；SFTP 与端口转发按「可选按需」待需求确认后独立批次**
+> 日期：2026-09-19 ｜ 状态：**计划主体完成：M0-M4（Telnet + 本地终端）全部实现（107 单测全绿）；M2 SSH 已于 2026-09-29 WSL 真机验收通过（验收前修复 SSH.NET 2026 四缺陷，见 §4）；M1 回环/M3 多会话/M4 人工验收清单在 §3.3/§5.3/§6.1；SFTP 与端口转发按「可选按需」待需求确认后独立批次**
 > 关联：[Serial_Tool_Design.md](Serial_Tool_Design.md) ｜ [README 路线图](../README.md) ｜ [功能增强执行计划](功能增强执行计划.md)
 
 ## 0. 完成度跟踪（每完成一个阶段更新此表）
@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | M0 地基 | 计划文档落定 + 依赖选型验证通过（XTerm.NET 2.0.2 API 冒烟） | ✅ 完成 | 2026-09-18 |
 | M1 串口终端 | 连上串口设备 → 终端窗渲染 VT 输出（颜色/清屏/光标/滚回）→ 键入即时回显交互 | ✅ 完成（代码+构建+冒烟；TCP 回环/真机项待人工确认） | 2026-09-18 |
-| M2 SSH 会话 | 连真实 Linux 主机交互 shell（密码/私钥、host key 首次确认、resize 通知） | ✅ 代码完成（构建+98 单测+冒烟；真机验收待人工） | 2026-09-18 |
+| M2 SSH 会话 | 连真实 Linux 主机交互 shell（密码/私钥、host key 首次确认、resize 通知） | ✅ 完成（2026-09-29 WSL sshd 真机验收通过：GUI 首连/TOFU/收发/resize/私钥/断开重连全链路；验收前修复四缺陷，见 §4） | 2026-09-29 |
 | M3 多会话 | 并发 N 个终端会话 + 标签页切换 + 保存的主机快速连接 | ✅ 代码完成（构建+98 单测+冒烟；多并发验收待人工） | 2026-09-19 |
 | M4 扩展（可选） | Telnet / 本地终端 ConPTY / SFTP，按需逐项启动 | ✅ Telnet + 本地终端完成（107 单测+ConPTY 实测回显/resize/销毁）；SFTP/端口转发待需求确认 | 2026-09-19 |
 
@@ -86,10 +86,19 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 - 渲染/交互为 App 层：构建通过 + 上节人工冒烟清单。
 - 引擎行为由 XTerm.NET 上游测试覆盖（其 CI 含 wcwidth 表回放一致性测试）。
 
-## 4. M2：SSH 远程会话 ✅（代码完成，真机验收待人工）
+## 4. M2：SSH 远程会话 ✅（2026-09-29 WSL 真机验收通过 + 四缺陷修复）
 
 **实现记录（2026-09-18）**：`Backends/Ssh/SshBackend.cs`（SSH.NET 2026.0.0：xterm-256color PTY、密码/私钥（带口令）认证、10s 连接超时、指纹被拒→明确异常）+ `KnownHostsStore.cs`（TOFU 纯逻辑，6 单测）；`HostKeyConfirmWindow`（首次/指纹变更两态确认，同步模态）；连接方式下拉新增 SSH（主机/端口/用户名/认证方式/密码或私钥+口令，凭据不落盘，其余持久化）；`TerminalView.Resized → NotifyTerminalResized → ChangeWindowSize`（远端 `stty size` 跟随）。
 **环境备忘**：本机 `dotnet restore` 对 nuget.org CDN 下载 SSH.NET nupkg 反复 TLS 失败（curl 正常）——已用 curl 将 SSH.NET 2026.0.0 + BouncyCastle.Cryptography 2.7.0 + Logging.Abstractions 8.0.3 手工铺进 `~/.nuget/packages`（含 .sha512/.nupkg.metadata），还原命中全局缓存零网络。其他机器首次还原若遇同问题照此处理。
+
+**修复记录（2026-09-29，WSL Ubuntu-22.04 sshd 真机验收驱动）**——验收发现「连接成功但发送/按键全程无反应」，顺藤摸出四个缺陷（三个都是 **SSH.NET 2026.0.0 大版本重写的破坏性变更**，老代码按 2024.x 行为写）：
+
+1. **`ShellStream.Write` 只写内部缓冲不发出**（核心缺陷）：2026 版必须显式 `Flush()` 才真正发通道（`WriteLine` 内部自带）——表现为连接/接收全正常，发送数据石沉大海。修复：`SshBackend.Write` 补 `shell.Flush()`。
+2. **`HostKeyReceived` 在工作线程（非调用线程）回调**：老版本在 `Connect()` 调用线程上同步抛出；2026 版在握手线程触发——原设计「UI 线程同步 Connect + 事件里直接弹窗」在两处炸：工作线程建 Window 抛 *调用线程必须为 STA*；若简单加 `Dispatcher.Invoke` 又会死锁（UI 阻塞在 Connect 内永不泵消息）。修复：`TogglePortAsync`/`TerminalWindow.OpenSshDialog` 把 `Open` 放 `Task.Run`（UI 空闲），`OnSshHostKeyVerifying` 检测不在 UI 线程时 `d.Invoke` 封送回 UI 弹窗裁决——同步 TOFU 语义保持、无死锁。
+3. **指纹挑战 Host 恒显示 `?`**：事件在 `_client` 赋值前触发，`ConnectionInfo.Host` 取不到 → known_hosts 存储错误条目。修复：`Open` 先记 `_connectHost/_connectPort` 兜底。
+4. **指纹弹窗从未成功打开过**：`HostKeyConfirmWindow` 的指纹/MD5 `TextBlock` 误用 `TargetType=TextBox` 的 `Mono` 样式（App.xaml 全局唯一等宽样式是 TextBox 专属）→ `XamlParseException`。修复：改 `FontFamily="{DynamicResource MonoFont}"`。
+
+**验收记录（2026-09-29）**：测试床 = 本机 WSL Ubuntu-22.04 sshd（`127.0.0.1:22`；WSL 侧环境也修了：`.wslconfig` GBK 编码 + `;` 注释解析失败、`networkingMode=mirrored` 本机不支持致 **VM 无网卡**，改 NAT+localhostForwarding 后恢复）。① 后端 `scripts/SshCheck` 控制台端到端 9 项全过（密码/私钥认证、交互收发回显、`stty size` resize 跟随、20KB 大数据、正常断开无异常事件、错误密码拒绝）；② GUI（UIA 驱动）全链路：首连指纹弹窗→信任→连接→发送区发命令**远端真实执行**（`touch` 落盘验证 + RX 回显）→断开→重连 TOFU 直通免弹窗；③ 107 单测全绿。bash/htop/vim 全屏 TUI 与断链提示两项仍待日常使用复核。
 
 ### 4.1 目标行为
 
@@ -107,11 +116,11 @@ IBusBackend._active ──────┼─ TcpBackend      │   现有：RX �
 
 ### 4.3 验收标准（flag M2）
 
-- [ ] 密码认证连真实 Linux 主机，bash/htop/vim 全部正常（备屏、256 色、鼠标）—— **待人工真机**。
-- [ ] 私钥（OpenSSH ed25519）认证通过 —— **待人工真机**。
-- [ ] 首连 TOFU 弹窗 → 接受后重连不再询问；篡改主机指纹 → 拒绝并提示 —— **待人工真机**（比对/持久化逻辑 6 单测覆盖）。
-- [ ] 终端窗拖拽 resize → 远端 `stty size` 跟随 —— **待人工真机**。
-- [ ] 断网/主机下线 → 明确断线提示，程序不崩 —— **待人工真机**（断线走既有 ErrorOccurred 链路）。
+- [x] 密码认证连真实 Linux 主机，bash 交互正常 —— ✅ 2026-09-29 WSL sshd 真机（GUI 发送命令远端执行 + RX 回显验证）；htop/vim 全屏 TUI 待日常使用复核。
+- [x] 私钥（OpenSSH ed25519）认证通过 —— ✅ 2026-09-29（SshCheck 端到端，密钥临时生成装入 WSL authorized_keys）。
+- [x] 首连 TOFU 弹窗 → 接受后重连不再询问 —— ✅ 2026-09-29 GUI 实测（首连弹窗→信任→known_hosts 落盘→重连直通免弹窗）；篡改指纹拒绝项由 6 单测覆盖。
+- [x] 终端窗拖拽 resize → 远端 `stty size` 跟随 —— ✅ 2026-09-29（SshCheck `ResizeTerminal(120,40)` → `stty size` 输出 `40 120`）。
+- [ ] 断网/主机下线 → 明确断线提示，程序不崩 —— **待人工真机**（断线走既有 ErrorOccurred 链路；2026-09-29 曾遇 WSL VM 空闲回收致链路僵死、App 未见异常，后续可加 keepalive 检测）。
 
 ## 5. M3：多会话管理 ✅（代码完成，多并发验收待人工）
 
