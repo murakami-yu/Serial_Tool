@@ -273,11 +273,13 @@ public partial class TerminalWindow : Window
         }
         catch (Exception ex)
         {
+            Services.AppLog.Warn("本地终端启动失败", ex);
             view.Dispose();
             MessageBox.Show(this, $"本地终端启动失败：{ex.Message}", "终端",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        Services.AppLog.Info($"本地终端会话开启：{con.CommandLine}");
         var session = TerminalSession.Local(con, view, title);
         var tab = BuildTab(session, closable: true);
         Sessions.Items.Add(tab);
@@ -311,7 +313,7 @@ public partial class TerminalWindow : Window
             SavedCombo.SelectedIndex = 0;
     }
 
-    private void OpenSshDialog(SavedSession? prefill)
+    private async void OpenSshDialog(SavedSession? prefill)
     {
         var dlg = new SshConnectDialog(_vm) { Owner = this };
         if (prefill is not null)
@@ -335,17 +337,22 @@ public partial class TerminalWindow : Window
 
         try
         {
-            backend.Open(new SshConfig(req.Host, req.Port, req.User,
-                req.Password, req.KeyPath, req.KeyPassphrase, view.Terminal.Cols, view.Terminal.Rows));
+            // 后台线程连接：SSH.NET 2026 在工作线程回调指纹校验，
+            // 上面的 Dispatcher.Invoke 弹窗需要 UI 线程空闲（不能阻塞在 Open 内）。
+            var cfg = new SshConfig(req.Host, req.Port, req.User,
+                req.Password, req.KeyPath, req.KeyPassphrase, view.Terminal.Cols, view.Terminal.Rows);
+            await Task.Run(() => backend.Open(cfg));
         }
         catch (Exception ex)
         {
+            Services.AppLog.Warn($"独立 SSH 会话连接失败：{req.User}@{req.Host}:{req.Port}", ex);
             session.Dispose();
             MessageBox.Show(this, $"连接失败：{ex.Message}", "新建 SSH 会话",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
+        Services.AppLog.Info($"独立 SSH 会话已连接：{req.User}@{req.Host}:{req.Port}");
         var tab = BuildTab(session, closable: true);
         Sessions.Items.Add(tab);
         Sessions.SelectedItem = tab;
@@ -375,11 +382,13 @@ public partial class TerminalWindow : Window
         }
         catch (Exception ex)
         {
+            Services.AppLog.Warn($"独立 Telnet 会话连接失败：{req.Host}:{req.Port}", ex);
             session.Dispose();
             MessageBox.Show(this, $"连接失败：{ex.Message}", "新建 Telnet 会话",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        Services.AppLog.Info($"独立 Telnet 会话已连接：{req.Host}:{req.Port}");
         var tab = BuildTab(session, closable: true);
         Sessions.Items.Add(tab);
         Sessions.SelectedItem = tab;
@@ -389,6 +398,7 @@ public partial class TerminalWindow : Window
     {
         var tab = _tabs.Find(t => ReferenceEquals(t.Session, session));
         if (tab is null || session.IsMain) return;
+        Services.AppLog.Info($"终端会话关闭：{session.Title}");
         _tabs.Remove(tab);
         Sessions.Items.Remove(tab.Tab);
         session.Dispose();

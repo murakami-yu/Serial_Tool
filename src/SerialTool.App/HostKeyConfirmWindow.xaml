@@ -31,11 +31,11 @@
             <TextBlock x:Name="AlgoText" Grid.Row="1" Grid.Column="1" Margin="12,2"/>
             <TextBlock Grid.Row="2" Grid.Column="0" Text="指纹" Foreground="{DynamicResource MutedBrush}" Margin="0,2"/>
             <TextBlock x:Name="FpText" Grid.Row="2" Grid.Column="1" Margin="12,2"
-                       Style="{StaticResource Mono}" TextWrapping="Wrap"/>
+                       FontFamily="{DynamicResource MonoFont}" TextWrapping="Wrap"/>
         </Grid>
 
         <TextBlock x:Name="Md5Text" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"
-                   Style="{StaticResource Mono}" TextWrapping="Wrap" FontSize="11"/>
+                   FontFamily="{DynamicResource MonoFont}" TextWrapping="Wrap" FontSize="11"/>
 
         <TextBlock Text="接受后指纹将保存到 Config/known_hosts.json，之后连接不再询问。"
                    Foreground="{DynamicResource MutedBrush}" Margin="0,10,0,0" TextWrapping="Wrap"/>

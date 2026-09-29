@@ -29,7 +29,10 @@ public interface ISshBackend : IBusBackend
     /// <summary>连接并打开交互 shell 通道（含认证与主机指纹校验）。失败抛异常（含指纹被拒）。</summary>
     void Open(SshConfig cfg);
 
-    /// <summary>主机指纹校验（连接过程中同步抛出，UI 线程弹窗决定）。必须已订阅再 Open。</summary>
+    /// <summary>主机指纹校验（连接过程中同步抛出，UI 线程弹窗决定）。
+    /// 注意：SSH.NET 2026 在工作线程（非 Open 调用线程）回调本事件——
+    /// 订阅方弹窗前须自行封送回 UI 线程，且 Open 应在后台线程调用以免 UI 阻塞死锁。
+    /// 必须已订阅再 Open。</summary>
     event EventHandler<SshHostKeyChallenge>? HostKeyVerifying;
 
     /// <summary>终端网格尺寸变化 → 通道窗口变更（远端 stty size 跟随）。</summary>
@@ -48,6 +51,9 @@ public sealed class SshBackend : ISshBackend
     private Thread? _readThread;
     private volatile bool _running;
     private bool _hostKeyRejected;
+    // 连接中的目标（HostKeyReceived 触发时 _client 尚未赋值，须用此处信息填挑战）
+    private string _connectHost = "?";
+    private int _connectPort = 22;
 
     private const int ConnectTimeoutMs = 10_000;
     private const int ShellBufferSize = 4096;
@@ -75,6 +81,8 @@ public sealed class SshBackend : ISshBackend
         try
         {
             _hostKeyRejected = false;
+            _connectHost = cfg.Host;
+            _connectPort = cfg.Port;
             client.HostKeyReceived += OnHostKeyReceived;
             client.Connect();
         }
@@ -83,7 +91,7 @@ public sealed class SshBackend : ISshBackend
             client.Dispose();
             throw new InvalidOperationException("已拒绝该服务器的主机指纹，连接未建立", ex);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             client.Dispose();
             throw; // 认证失败(SshAuthenticationException)/网络超时等原样上抛，UI 展示 Message
@@ -134,8 +142,8 @@ public sealed class SshBackend : ISshBackend
     {
         var challenge = new SshHostKeyChallenge
         {
-            Host = _client?.ConnectionInfo.Host ?? "?",
-            Port = _client?.ConnectionInfo.Port ?? 22,
+            Host = _client?.ConnectionInfo.Host ?? _connectHost,
+            Port = _client?.ConnectionInfo.Port ?? _connectPort,
             Algorithm = e.HostKeyName,
             FingerprintSha256 = e.FingerPrintSHA256,
             FingerprintMd5 = e.FingerPrintMD5,
@@ -157,6 +165,9 @@ public sealed class SshBackend : ISshBackend
             throw new InvalidOperationException("SSH 连接未打开");
         var buf = data.ToArray();
         shell.Write(buf, 0, buf.Length);
+        // SSH.NET 2026 起 ShellStream.Write 只写内部缓冲，必须 Flush 才真正发到通道，
+        // 否则终端输入会攒在本地直到下次 Flush，表现为"按键/发送无反应"。
+        shell.Flush();
     }
 
     public void Close()

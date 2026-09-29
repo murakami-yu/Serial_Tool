@@ -87,6 +87,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>当前活动连接（串口或 TCP），未连接为 null。</summary>
     private IBusBackend? _active;
 
+    /// <summary>当前连接的人类可读描述（如 "COM3 @ 115200"），运行日志断开时引用。</summary>
+    private string _activeDesc = string.Empty;
+
     private readonly SessionLogger _logger = new();
     private readonly ConcurrentQueue<RxItem> _rxQueue = new();
     private readonly List<RxItem> _lines = new();
@@ -211,12 +214,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnTxColorHexChanged(string value)
     {
         TxBrush = MakeBrush(value, DefaultTxColor);
+        AppLog.Info($"发送行颜色变更：{value}");
         SaveUiSettings();
     }
 
     partial void OnRxColorHexChanged(string value)
     {
         RxBrush = MakeBrush(value, DefaultRxColor);
+        AppLog.Info($"接收行颜色变更：{value}");
         SaveUiSettings();
     }
 
@@ -446,7 +451,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         LoadUiSettings();
         // 外观单例属性变化（外观设置窗改色）→ 即存（与 TxColorHex 等同一"变化即落盘"惯例）
-        Services.Appearance.Instance.PropertyChanged += (_, _) => SaveUiSettings();
+        // 订阅在 LoadUiSettings 之后添加：启动期批量回填不会进操作日志；主题预设一套 13 项逐条记（用户一次点击的真实后果）
+        Services.Appearance.Instance.PropertyChanged += (_, a) =>
+        {
+            SaveUiSettings();
+            var v = a.PropertyName is null ? null
+                : Services.Appearance.Instance.GetType().GetProperty(a.PropertyName)
+                    ?.GetValue(Services.Appearance.Instance)?.ToString();
+            AppLog.Info($"外观变更：{a.PropertyName} = {v}");
+        };
         SyncBaudSelection();
         LoadTemplates();
         _ = LoadPortsAsync();
@@ -457,7 +470,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ---------- 帧解析联动 ----------
 
-    partial void OnParseEnabledChanged(bool value) => RebuildParser();
+    partial void OnParseEnabledChanged(bool value)
+    {
+        AppLog.Info($"帧解析：{(value ? "开启" : "关闭")}");
+        RebuildParser();
+    }
 
     partial void OnSelectedTemplateChanged(FrameTemplate? value) => RebuildParser();
 
@@ -479,11 +496,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _parser = new MultiFrameParser(active);
             _parser.FrameEmitted += OnFrameEmitted;
+            AppLog.Info($"帧解析仲裁就绪：{active.Count} 个模板（{string.Join("、", active.Select(t => t.Name))}）");
             StatusText = $"帧解析开启: {active.Count} 个模板并行仲裁";
         }
         catch (Exception ex)
         {
             ParseEnabled = false; // 触发本方法重入，清理解析器
+            AppLog.Warn($"帧解析器构建失败（已自动关闭解析）：{string.Join("、", active.Select(t => t.Name))}", ex);
             StatusText = $"解析器构建失败: {ex.Message}";
         }
     }
@@ -537,6 +556,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenTemplateEditor()
     {
+        AppLog.Info("打开模板编辑器");
         var win = new TemplateEditorWindow(this)
         {
             Owner = Application.Current?.MainWindow,
@@ -576,9 +596,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
             // 配置损坏时使用默认模板
+            AppLog.Warn($"模板配置加载失败，使用默认模板：{TemplatesPath}", ex);
         }
         if (Templates.Count == 0)
         {
@@ -600,6 +621,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"模板保存失败：{TemplatesPath}", ex);
             StatusText = $"模板保存失败: {ex.Message}";
         }
     }
@@ -623,6 +645,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnConnTypeIndexChanged(int value)
     {
+        AppLog.Info($"切换连接方式 → {(value == 0 ? "串口" : value == 1 ? "TCP" : "SSH")}");
         OnPropertyChanged(nameof(IsSerial));
         OnPropertyChanged(nameof(IsTcp));
         OnPropertyChanged(nameof(IsSsh));
@@ -633,6 +656,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // 切换连接方式时若已连接则先断开
         if (IsPortOpen)
         {
+            AppLog.Info($"切换连接方式，断开 {_activeDesc}");
             _active?.Close();
             _active = null;
             IsPortOpen = false;
@@ -652,10 +676,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RefreshPorts()
     {
-        var items = await Task.Run(_serialBackend.Scan);
+        IReadOnlyList<DeviceInfo> items;
+        try
+        {
+            items = await Task.Run(_serialBackend.Scan);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn("串口扫描失败", ex);
+            StatusText = $"串口扫描失败: {ex.Message}";
+            return;
+        }
         PortItems = new ObservableCollection<DeviceInfo>(items);
         if (SelectedDevice is null || items.All(d => d.Id != SelectedDevice.Id))
             SelectedDevice = items.FirstOrDefault();
+        AppLog.Info(items.Count > 0
+            ? $"串口扫描：发现 {items.Count} 个（{string.Join(", ", items.Select(d => d.Id))}）"
+            : "串口扫描：未发现串口");
         StatusText = items.Count > 0
             ? $"发现 {items.Count} 个串口"
             : "未发现串口（插入设备后点刷新）";
@@ -664,10 +701,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task LoadPortsAsync() => await RefreshPorts();
 
     [RelayCommand(CanExecute = nameof(CanTogglePort))]
-    private void TogglePort()
+    private async Task TogglePortAsync()
     {
         if (IsPortOpen)
         {
+            AppLog.Info($"用户断开 {_activeDesc}");
             _active?.Close();
             _active = null;
             IsPortOpen = false;
@@ -676,6 +714,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // 连接目标描述：成功/失败都进运行日志（不含凭据）
+        var targetDesc = IsSerial
+            ? $"串口 {SelectedDevice?.Id} @ {BaudText.Trim()}"
+            : IsTcp
+                ? $"TCP {TcpHost.Trim()}:{TcpPort}"
+                : $"SSH {SshUser.Trim()}@{SshHost.Trim()}:{SshPort}（{(SshAuthIndex == 1 ? "私钥" : "密码")}认证）";
         try
         {
             if (IsSerial)
@@ -683,6 +727,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var baud = SelectedBaud;
                 if (baud <= 0)
                 {
+                    AppLog.Warn($"连接被拒绝：波特率非法 \"{BaudText.Trim()}\"");
                     StatusText = "波特率非法：请输入正整数（如 115200），或从下拉列表选择";
                     return;
                 }
@@ -701,15 +746,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                // SSH：连接在 UI 线程同步进行（10s 超时，LAN 亚秒）；主机指纹事件同步弹窗裁决
-                _sshBackend.Open(new SshConfig(SshHost.Trim(), SshPort, SshUser.Trim(),
+                // SSH：连接移至后台线程执行——SSH.NET 2026 在工作线程（非调用线程）回调
+                // HostKeyReceived，指纹弹窗须回 UI 线程；若 UI 线程阻塞在 Connect 内，
+                // 弹窗封送会死锁 / 工作线程直接建 Window 抛 STA 异常。
+                // 后台执行 + UI 空闲 → 同步弹窗裁决可行（10s 超时在库内）。
+                var cfg = new SshConfig(SshHost.Trim(), SshPort, SshUser.Trim(),
                     SshAuthIndex == 0 ? SshPassword : null,
                     SshAuthIndex == 1 ? SshKeyPath : null,
                     SshAuthIndex == 1 ? SshKeyPassphrase : null,
-                    _termCols, _termRows));
+                    _termCols, _termRows);
+                StatusText = $"SSH {SshUser.Trim()}@{SshHost.Trim()}:{SshPort} 连接中…";
+                await Task.Run(() => _sshBackend.Open(cfg));
                 _active = _sshBackend;
                 StatusText = $"SSH {SshUser.Trim()}@{SshHost.Trim()}:{SshPort} 已连接";
             }
+            _activeDesc = targetDesc;
+            AppLog.Info($"连接成功：{targetDesc}");
             IsPortOpen = true;
             _connectedSince = DateTime.Now;
             if (IsSerial)
@@ -721,6 +773,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"连接失败：{targetDesc}", ex);
             StatusText = $"连接失败: {ex.Message}";
         }
     }
@@ -780,8 +833,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler<SshHostKeyChallenge>? HostKeyChallenge;
 
     /// <summary>SSH 主机指纹校验（TOFU）：已信任直通；首次/变更弹窗裁决，接受即写 known_hosts。
-    /// 主连接与终端窗多会话共用同一入口。</summary>
-    private void OnSshHostKeyVerifying(object? sender, SshHostKeyChallenge e) => VerifyHostKey(e);
+    /// 主连接与终端窗多会话共用同一入口。SSH.NET 2026 在工作线程回调本事件，
+    /// 弹窗前须封送回 UI 线程（Open 已在后台线程执行，UI 空闲，同步 Invoke 安全）。</summary>
+    private void OnSshHostKeyVerifying(object? sender, SshHostKeyChallenge e)
+    {
+        var d = Application.Current?.Dispatcher;
+        if (d is null || d.CheckAccess())
+            VerifyHostKey(e);
+        else
+            d.Invoke(() => VerifyHostKey(e));
+    }
 
     /// <summary>同步校验并弹窗（UI 线程调用）：返回是否信任。</summary>
     public bool VerifyHostKey(SshHostKeyChallenge e)
@@ -793,9 +854,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return true;
         }
         e.Changed = result == KnownHostResult.Changed;
+        // 安全相关裁决全程留痕（含指纹，便于核对是否中间人替换）
+        AppLog.Warn($"SSH 主机指纹待裁决：{e.Host}:{e.Port} {e.Algorithm} " +
+                    $"{(e.Changed ? "【指纹变更】" : "【首次连接】")} SHA256={e.FingerprintSha256}");
         HostKeyChallenge?.Invoke(this, e);
         if (e.Accepted)
+        {
             _knownHosts.Trust(e.Host, e.Port, e.Algorithm, e.FingerprintSha256);
+            AppLog.Info($"SSH 主机指纹已信任：{e.Host}:{e.Port} {e.Algorithm}");
+        }
+        else
+        {
+            AppLog.Warn($"SSH 主机指纹被拒绝：{e.Host}:{e.Port} {e.Algorithm}");
+        }
         return e.Accepted;
     }
 
@@ -819,6 +890,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"终端发送失败（{bytes.Length} 字节）", ex);
             StatusText = $"发送失败: {ex.Message}";
             return;
         }
@@ -841,6 +913,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"发送失败（{bytes.Length} 字节{(label is null ? "" : $"，{label}")}）", ex);
             StatusText = $"发送失败: {ex.Message}";
             return;
         }
@@ -848,7 +921,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         AppendWave(_txWave, bytes, DateTime.Now, ref _txPrev);
         TxCount += bytes.Length;
         if (!silent)
+        {
+            // 操作日志只记行为与字节数，不记数据内容（数据由用户手开的会话日志负责）
+            AppLog.Info(label is null ? $"手动发送 {bytes.Length} 字节" : $"发送{label}（{bytes.Length} 字节）");
             StatusText = label is null ? $"已发送 {bytes.Length} 字节" : $"已发送 {label}（{bytes.Length} 字节）";
+        }
     }
 
     // ---------- 多帧发送 ----------
@@ -915,12 +992,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var frame = new SendFrameViewModel(this) { PeriodMs = 1000 };
         frame.PropertyChanged += OnFramePropertyChanged;
         SendFrames.Add(frame);
+        if (!_seeding) AppLog.Info($"新增发送帧 #{frame.Index}（共 {SendFrames.Count} 条）");
     }
+
+    /// <summary>启动种子生成期标记：LoadFrames 空配置时的 8 条种子帧非用户操作，不入操作日志。</summary>
+    private bool _seeding;
 
     [RelayCommand(CanExecute = nameof(CanRemoveFrame))]
     private void RemoveSelectedFrame()
     {
         if (SelectedFrame is null) return;
+        AppLog.Info($"删除发送帧 #{SelectedFrame.Index}（剩 {SendFrames.Count - 1} 条）");
         SelectedFrame.PropertyChanged -= OnFramePropertyChanged;
         SendFrames.Remove(SelectedFrame);
     }
@@ -930,6 +1012,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearFrames()
     {
+        AppLog.Info($"清空发送帧列表（原 {SendFrames.Count} 条）");
         foreach (var f in SendFrames)
             f.PropertyChanged -= OnFramePropertyChanged;
         SendFrames.Clear();
@@ -982,13 +1065,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     }
             }
         }
-        catch
+        catch (Exception ex)
         {
             // 配置损坏时回退到默认空帧
+            AppLog.Warn($"帧配置加载失败，回退默认空帧：{FramesConfigPath}", ex);
         }
         if (SendFrames.Count == 0)
+        {
+            _seeding = true;
             for (var i = 0; i < 8; i++)
                 AddFrame();
+            _seeding = false;
+        }
     }
 
     private void SaveFrames()
@@ -1001,6 +1089,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"帧配置保存失败：{FramesConfigPath}", ex);
             StatusText = $"帧配置保存失败: {ex.Message}";
         }
     }
@@ -1026,9 +1115,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         AddPlotCore(MapPlot(d));
             }
         }
-        catch
+        catch (Exception ex)
         {
             // 配置损坏时回退到默认样例
+            AppLog.Warn($"曲线配置加载失败，回退默认样例：{PlotsConfigPath}", ex);
         }
         if (FieldPlots.Count == 0)
         {
@@ -1063,6 +1153,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"曲线配置保存失败：{PlotsConfigPath}", ex);
             StatusText = $"曲线配置保存失败: {ex.Message}";
         }
     }
@@ -1084,12 +1175,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         AddPlotCore(new FieldPlotViewModel { Name = $"curve{n}" });
         SelectedPlot = FieldPlots[^1];
         SavePlots();
+        AppLog.Info($"新增字段曲线 curve{n}（共 {FieldPlots.Count} 条）");
     }
 
     [RelayCommand(CanExecute = nameof(CanRemovePlot))]
     private void RemoveSelectedPlot()
     {
         if (SelectedPlot is null) return;
+        AppLog.Info($"删除字段曲线 {SelectedPlot.Name}（剩 {FieldPlots.Count - 1} 条）");
         SelectedPlot.ConfigChanged -= OnPlotConfigChanged;
         lock (_plotLock)
         {
@@ -1104,6 +1197,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearPlots()
     {
+        AppLog.Info($"清空字段曲线（原 {FieldPlots.Count} 条）");
         foreach (var p in FieldPlots)
             p.ConfigChanged -= OnPlotConfigChanged;
         lock (_plotLock)
@@ -1159,9 +1253,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         });
             }
         }
-        catch
+        catch (Exception ex)
         {
             // 配置损坏时回退到空规则
+            AppLog.Warn($"应答配置加载失败，回退空规则：{RepliesConfigPath}", ex);
         }
         if (AutoReplies.Count == 0)
         {
@@ -1185,6 +1280,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"应答配置保存失败：{RepliesConfigPath}", ex);
             StatusText = $"应答配置保存失败: {ex.Message}";
         }
     }
@@ -1199,12 +1295,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         AutoReplies.Add(r);
         SelectedReply = r;
         SaveReplies();
+        AppLog.Info($"新增应答规则 {r.Name}（共 {AutoReplies.Count} 条）");
     }
 
     [RelayCommand(CanExecute = nameof(CanRemoveReply))]
     private void RemoveSelectedReply()
     {
         if (SelectedReply is null) return;
+        AppLog.Info($"删除应答规则 {SelectedReply.Name}（剩 {AutoReplies.Count - 1} 条）");
         SelectedReply.ConfigChanged -= OnReplyConfigChanged;
         AutoReplies.Remove(SelectedReply);
         SaveReplies();
@@ -1215,6 +1313,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearReplies()
     {
+        AppLog.Info($"清空应答规则（原 {AutoReplies.Count} 条）");
         foreach (var r in AutoReplies)
             r.ConfigChanged -= OnReplyConfigChanged;
         AutoReplies.Clear();
@@ -1312,9 +1411,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
             // 设置损坏时使用默认值
+            AppLog.Warn($"UI 设置加载失败，使用默认值：{UiSettingsPath}", ex);
         }
     }
 
@@ -1333,18 +1433,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ap.HoverHex, ap.SelectedHex, ap.UiFontFamily, ap.UiFontSize),
                 new JsonSerializerOptions { WriteIndented = true }));
         }
-        catch
+        catch (Exception ex)
         {
             // 保存失败不影响功能
+            AppLog.Warn($"UI 设置保存失败：{UiSettingsPath}", ex);
         }
     }
 
-    partial void OnShowFramesPanelChanged(bool value) => SaveUiSettings();
+    partial void OnShowFramesPanelChanged(bool value)
+    {
+        AppLog.Info($"多帧面板：{(value ? "显示" : "隐藏")}");
+        SaveUiSettings();
+    }
 
     /// <summary>勾选即按当前输入立即发首帧（连接未开/HEX 非法时提示并保留勾选，下周期自动重试）；
     /// 取消即停。开关与周期均持久化。</summary>
     partial void OnTxCyclicChanged(bool value)
     {
+        AppLog.Info(value ? $"主发送区定时发送开启（周期 {Math.Max(TxPeriodMs, CyclicTickMs)} ms）" : "主发送区定时发送关闭");
         if (value)
         {
             _txNextDue = DateTime.Now.AddMilliseconds(Math.Max(TxPeriodMs, CyclicTickMs));
@@ -1358,9 +1464,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnTxPeriodMsChanged(int value) => SaveUiSettings();
 
-    partial void OnShowWavePanelChanged(bool value) => SaveUiSettings();
+    partial void OnShowWavePanelChanged(bool value)
+    {
+        AppLog.Info($"波形窗口：{(value ? "打开" : "关闭")}");
+        SaveUiSettings();
+    }
 
-    partial void OnShowTerminalPanelChanged(bool value) => SaveUiSettings();
+    partial void OnShowTerminalPanelChanged(bool value)
+    {
+        AppLog.Info($"终端窗口：{(value ? "打开" : "关闭")}");
+        SaveUiSettings();
+    }
 
     partial void OnWaveFollowChanged(bool value) => SaveUiSettings();
 
@@ -1426,6 +1540,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearRx()
     {
+        AppLog.Info($"清空接收区（原 {_lines.Count} 行）");
         _lines.Clear();
         RxCount = 0;
         TxCount = 0;
@@ -1467,6 +1582,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (dlg.ShowDialog() != true) return;
 
         LogFilePath = dlg.FileName;
+        AppLog.Info($"会话数据日志路径变更：{LogFilePath}");
         if (LogEnabled)
         {
             StartLogging();
@@ -1510,9 +1626,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _logger.Open(LogFilePath);
             _logger.WriteLine($"===== Serial Tool 会话 {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====");
+            AppLog.Info($"会话数据日志开启：{LogFilePath}");
         }
         catch (Exception ex)
         {
+            AppLog.Warn($"会话数据日志开启失败：{LogFilePath}", ex);
             LogEnabled = false;
             StatusText = $"日志开启失败: {ex.Message}";
         }
@@ -1682,6 +1800,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             r.HitCount++;
             if (r.Once)
                 r.Enabled = false; // 触发 ConfigChanged → 持久化禁用状态
+            AppLog.Info($"自动应答命中[{r.Name}]（第 {r.HitCount} 次）：待发 {bytes.Length} 字节，延迟 {Math.Max(0, r.DelayMs)} ms");
             _pendingReplies.Add((DateTime.Now.AddMilliseconds(Math.Max(0, r.DelayMs)),
                 bytes, $"应答[{r.Name}]"));
             return; // 首条命中即止
@@ -1806,13 +1925,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     private void OnBackendError(object? sender, string msg)
-        => Dispatch(() =>
+    {
+        AppLog.Error($"后端错误中断（{(sender as IBusBackend)?.Name ?? "未知"}，{_activeDesc}）：{msg}");
+        Dispatch(() =>
         {
             _active = null;
             IsPortOpen = false;
             OnLinkClosed();
             StatusText = msg;
         });
+    }
 
     private static void Dispatch(Action action)
         => Application.Current?.Dispatcher.BeginInvoke(action);
@@ -1859,6 +1981,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 else
                 {
                     _logger.Close();
+                    AppLog.Info("会话数据日志停止");
                     StatusText = "日志已停止";
                 }
                 break;
