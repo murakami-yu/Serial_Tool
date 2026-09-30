@@ -12,7 +12,7 @@
          + 独立 SSH 会话 tab（自持 backend，关标签即断开）
          + 工具条：新建会话 / 已保存会话快速连接 / 删除
          生命周期与图表窗同模式：X=销毁（主窗「终端」按钮重开新建），主窗记忆位置尺寸。
-         MinWidth=600：三枚新建按钮 + 会话下拉 + 连接/删除 的最小完整宽度，
+         MinWidth=600：四枚新建按钮 + 会话下拉 + 连接/删除 的最小完整宽度，
          再窄提示文本先省略（末位填充 + 省略号），按钮永不裁切 -->
 
     <Grid Margin="12">
@@ -29,6 +29,8 @@
                     ToolTip="新建 Telnet 会话（RFC 854 IAC 协商，自动接受服务器回显）"/>
             <Button x:Name="NewLocalBtn" DockPanel.Dock="Left" Content="+ 本地" Click="NewLocal_Click" FontWeight="Bold" Margin="6,0,0,0"
                     ToolTip="新建本地终端（ConPTY 承载 PowerShell / cmd，零外部依赖）"/>
+            <Button x:Name="NewRttBtn" DockPanel.Dock="Left" Content="+ RTT" Click="NewRtt_Click" FontWeight="Bold" Margin="6,0,0,0"
+                    ToolTip="新建 SEGGER RTT 会话（经 J-Link 探针读写目标机 RAM 环形缓冲，需 J-Link 软件与已集成 RTT 的固件；同时仅一个连接）"/>
             <Button DockPanel.Dock="Right" Content="删除" Click="DeleteSaved_Click" Margin="6,0,0,0"
                     ToolTip="删除选中的已保存会话（仅列表项，不影响连接）"/>
             <Button DockPanel.Dock="Right" Content="连接" Click="ConnectSaved_Click" Margin="6,0,0,0"

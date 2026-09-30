@@ -55,6 +55,30 @@ public sealed class TerminalSession : IDisposable
         return s;
     }
 
+    /// <summary>独立 RTT 会话（J-Link 探针 + SEGGER RTT；无 resize 概念）。
+    /// 下行写失败只警一次：目标不消费 RTT 输入是常态故障（缓冲满），逐按键刷日志会淹没。</summary>
+    public static TerminalSession Rtt(Backends.Rtt.RttBackend backend, TerminalView view, string title)
+    {
+        var s = new TerminalSession(title, view, backend);
+        backend.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
+        backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
+        {
+            Services.AppLog.Error($"独立 RTT 会话中断（{title}）：{msg}");
+            s.Status = "已断开：" + msg;
+        });
+        int writeWarned = 0;
+        view.InputEmitted += bytes =>
+        {
+            try { backend.Write(bytes); }
+            catch (Exception ex) when (Interlocked.Exchange(ref writeWarned, 1) == 0)
+            {
+                view.Dispatcher.BeginInvoke(() =>
+                    Services.AppLog.Warn($"RTT 发送失败（{title}，后续同类不再提示）：{ex.Message}"));
+            }
+        };
+        return s;
+    }
+
     /// <summary>独立 Telnet 会话（无 resize 通知：v1 不做 NAWS）。</summary>
     public static TerminalSession Telnet(Backends.Telnet.TelnetBackend backend, TerminalView view, string title)
     {

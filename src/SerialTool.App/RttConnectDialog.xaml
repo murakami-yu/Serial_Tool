@@ -1,0 +1,90 @@
+<Window x:Class="SerialTool.App.RttConnectDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:s="clr-namespace:SerialTool.App.Services"
+        Title="新建 RTT 会话" SizeToContent="WidthAndHeight"
+        Background="{Binding Source={x:Static s:Appearance.Instance}, Path=MainBgHex, Converter={StaticResource HexToBrush}}" WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource UiFontFamily}" FontSize="{DynamicResource UiFontSize}"
+        ResizeMode="NoResize" ShowInTaskbar="False">
+
+    <!-- 终端窗「+ RTT」入口：经 J-Link 探针读写目标机 RAM 中的 SEGGER RTT 环形缓冲。
+         需本机安装 SEGGER J-Link 软件（DLL 运行时定位，不随应用分发）+ 固件已集成 SEGGER RTT。
+         「保存到会话列表」仅存连接参数（器件/接口/速度/通道/控制块地址），无凭据概念 -->
+
+    <StackPanel Margin="16" Width="380">
+        <TextBlock x:Name="ProbeStatus" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8" TextWrapping="Wrap"
+                   Text="正在检测 J-Link 探针…"/>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="名称" VerticalAlignment="Center"
+                       Foreground="{DynamicResource MutedBrush}"/>
+            <TextBox x:Name="NameBox" Grid.Row="0" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
+                     ToolTip="保存到会话列表时使用的显示名（留空则用 器件·RTT通道）"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="器件" VerticalAlignment="Center"
+                       Foreground="{DynamicResource MutedBrush}"/>
+            <DockPanel Grid.Row="1" Grid.Column="1" Margin="12,4,0,4">
+                <ComboBox x:Name="IfaceBox" DockPanel.Dock="Right" Width="70" VerticalAlignment="Center"
+                          ToolTip="调试接口（目标板 SWD/JTAG 接线需一致）">
+                    <ComboBoxItem Content="SWD" IsSelected="True"/>
+                    <ComboBoxItem Content="JTAG"/>
+                </ComboBox>
+                <TextBox x:Name="DeviceBox" VerticalAlignment="Center" MinWidth="160"
+                         ToolTip="J-Link 器件名，如 STM32F407VG / nRF52840_xxAA（须与目标芯片一致）"/>
+            </DockPanel>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="速度" VerticalAlignment="Center"
+                       Foreground="{DynamicResource MutedBrush}"/>
+            <DockPanel Grid.Row="2" Grid.Column="1" Margin="12,4,0,4">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock Text="通道" VerticalAlignment="Center" Margin="14,0,6,0"
+                               Foreground="{DynamicResource MutedBrush}"/>
+                    <ComboBox x:Name="ChannelBox" Width="56" VerticalAlignment="Center"
+                              ToolTip="RTT 通道号（0 = 终端/打印惯例通道）">
+                        <ComboBoxItem Content="0" IsSelected="True"/>
+                        <ComboBoxItem Content="1"/>
+                        <ComboBoxItem Content="2"/>
+                        <ComboBoxItem Content="3"/>
+                    </ComboBox>
+                </StackPanel>
+                <ComboBox x:Name="SpeedBox" IsEditable="True" Width="86" VerticalAlignment="Center"
+                          Text="4000"
+                          ToolTip="接口速度 kHz（J-Link 自动协商到可行值）">
+                    <ComboBoxItem Content="1000"/>
+                    <ComboBoxItem Content="2000"/>
+                    <ComboBoxItem Content="4000" IsSelected="True"/>
+                    <ComboBoxItem Content="8000"/>
+                    <ComboBoxItem Content="12000"/>
+                </ComboBox>
+                <TextBlock Text="kHz" VerticalAlignment="Center" Margin="6,0,0,0"
+                           Foreground="{DynamicResource MutedBrush}"/>
+            </DockPanel>
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="控制块" VerticalAlignment="Center"
+                       Foreground="{DynamicResource MutedBrush}"
+                       ToolTip="_SEGGER_RTT 控制块地址；固件含符号表或未裁剪时自动搜索即可命中"/>
+            <TextBox x:Name="AddrBox" Grid.Row="3" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
+                     ToolTip="RTT 控制块地址（hex，可带 0x）。留空 = 自动搜索 RAM（固件用 --gc-sections/LTO 裁掉控制块时须手填）"/>
+        </Grid>
+
+        <CheckBox x:Name="SaveBox" Content="保存到会话列表" Margin="0,12,0,0"/>
+
+        <TextBlock x:Name="Err" Foreground="#C00000" Margin="0,8,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="连接" IsDefault="True" Click="OnConnect" Width="76"/>
+            <Button Content="取消" IsCancel="True" Margin="8,0,0,0" Width="70"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

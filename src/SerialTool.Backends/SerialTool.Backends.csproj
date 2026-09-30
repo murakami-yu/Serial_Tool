@@ -5,12 +5,19 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- RTT 后端 P/Invoke JLink_x64.dll（byte*/void* 参数 + fixed 固定） -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="RJCP.SerialPortStream" Version="3.0.5" />
     <PackageReference Include="System.Management" Version="10.0.11" />
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- RttCheck 端到端工具需访问 internal 的 JLinkNative（DLL 加载/版本验证） -->
+    <InternalsVisibleTo Include="RttCheck" />
   </ItemGroup>
 
 </Project>

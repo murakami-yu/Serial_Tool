@@ -20,6 +20,9 @@ public partial class App : Application
         Services.AppLog.Info($"===== 启动 v{v} | {Environment.OSVersion} | {RuntimeInformation.FrameworkDescription}" +
                              $" | PID {Environment.ProcessId} | 基目录 {AppContext.BaseDirectory} =====");
         Exit += (_, _) => Services.AppLog.Info("正常退出");
+        // J-Link 原生层消息（被抑制的 DLL 弹窗文本等，多来自其内部线程）→ 运行日志留痕。
+        // 订阅方只做字符串记录：回调上下文不可控（可能持 DLL 内部锁），不做任何锁/UI 操作。
+        SerialTool.Backends.Rtt.RttBackend.JLinkLog += msg => Services.AppLog.Warn($"[J-Link] {msg}");
         // 控件级配色：外观单例属性变化 → 替换 App.xaml 主题画刷实例，DynamicResource 引用实时级联。
         // 不能用「StaticResource 共享实例 + 突变 Color」：样式/模板密封时会冻结引用到的画刷实例，
         // 突变冻结画刷抛 InvalidOperationException（曾在 LoadUiSettings 的 catch 里被静默吞掉，改色全无效）。

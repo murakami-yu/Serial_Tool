@@ -259,6 +259,8 @@ public partial class TerminalWindow : Window
 
     private void NewLocal_Click(object sender, RoutedEventArgs e) => StartLocalSession();
 
+    private void NewRtt_Click(object sender, RoutedEventArgs e) => OpenRttDialog(prefill: null);
+
     /// <summary>新建本地终端会话（ConPTY 承载 pwsh → powershell 探测兜底）。</summary>
     private void StartLocalSession()
     {
@@ -296,6 +298,8 @@ public partial class TerminalWindow : Window
         }
         if (s.Kind == "telnet")
             OpenTelnetDialog(s);
+        else if (s.Kind == "rtt")
+            OpenRttDialog(s);
         else
             OpenSshDialog(s);
     }
@@ -389,6 +393,50 @@ public partial class TerminalWindow : Window
             return;
         }
         Services.AppLog.Info($"独立 Telnet 会话已连接：{req.Host}:{req.Port}");
+        var tab = BuildTab(session, closable: true);
+        Sessions.Items.Add(tab);
+        Sessions.SelectedItem = tab;
+    }
+
+    private async void OpenRttDialog(SavedSession? prefill)
+    {
+        var dlg = new RttConnectDialog() { Owner = this };
+        if (prefill is not null)
+            dlg.Prefill(prefill);
+        if (dlg.ShowDialog() != true || dlg.Request is not { } req)
+            return;
+
+        if (req.SaveToList)
+        {
+            var name = req.SaveName ?? $"{req.Device} · RTT{req.Channel}";
+            // SavedSession 字段复用（Kind="rtt"）：Host=器件名 Port=速度kHz User=通道 AuthIndex=接口 KeyPath=控制块地址hex
+            _saved.AddOrUpdate(new SavedSession(name, "rtt", req.Device, req.SpeedKhz,
+                req.Channel.ToString(), req.Iface, req.ControlBlockAddress is { } a ? $"0x{a:X}" : ""));
+            RefreshSavedCombo();
+        }
+
+        var backend = new Backends.Rtt.RttBackend();
+        var view = new TerminalView();
+        var title = $"{req.Device} · RTT{req.Channel}";
+        var session = TerminalSession.Rtt(backend, view, title);
+
+        try
+        {
+            // 后台线程连接：J-Link 探针连接 + RTT 控制块搜索阻塞可达数秒，不能卡 UI
+            var cfg = new Backends.Rtt.RttConfig(req.Device, req.SpeedKhz, req.Iface,
+                req.Channel, req.ControlBlockAddress);
+            await Task.Run(() => backend.Open(cfg));
+        }
+        catch (Exception ex)
+        {
+            Services.AppLog.Warn($"独立 RTT 会话连接失败：{req.Device}", ex);
+            session.Dispose();
+            MessageBox.Show(this, $"连接失败：{ex.Message}", "新建 RTT 会话",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        Services.AppLog.Info($"独立 RTT 会话已连接：{req.Device} {(req.Iface == 1 ? "JTAG" : "SWD")}@{req.SpeedKhz}kHz ch{req.Channel}");
         var tab = BuildTab(session, closable: true);
         Sessions.Items.Add(tab);
         Sessions.SelectedItem = tab;
