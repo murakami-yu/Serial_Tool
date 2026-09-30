@@ -1650,8 +1650,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         AppendWave(_rxWave, e.Bytes, e.Timestamp, ref _rxPrev); // 波形与解析/显示模式无关
         if (_parser != null)
         {
-            // 帧解析模式：原始字节流进解析器，接收区只显示解出的帧
-            _parser.Feed(e.Bytes);
+            // 帧解析模式：原始字节流进解析器，接收区只显示解出的帧。
+            // Feed 在读线程执行且无上层兜底——解析器内部任何未预见异常都会终结进程，
+            // 这里兜底：拆掉解析器转为直通显示（宁可丢解析不能崩进程）。
+            try
+            {
+                _parser.Feed(e.Bytes);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("帧解析器异常（已自动关闭解析，转为原始显示）", ex);
+                _parser.FrameEmitted -= OnFrameEmitted;
+                _parser = null;
+                _rxQueue.Enqueue(new RxItem(e.Timestamp, e.Bytes, IsTx: false));
+            }
             return;
         }
         _rxQueue.Enqueue(new RxItem(e.Timestamp, e.Bytes, IsTx: false));

@@ -268,6 +268,62 @@ public class FrameParserTests
     }
 
     [Fact]
+    public void FourByteLength_BigEndian_Max()
+    {
+        var t = new FrameTemplate
+        {
+            Name = "四字节大端长度",
+            Header = "AA 55",
+            Fields = { new FrameField { Kind = "length", Size = 4, BigEndian = true }, new FrameField { Kind = "data" } },
+            Checksum = "xor",
+        };
+        var body = H("AA 55").Concat(new byte[] { 0x00, 0x00, 0x01, 0x2C }).Concat(new byte[300]).ToArray(); // 300
+        var f = Run(t, AppendCk(t, body));
+        Assert.Single(f);
+        Assert.True(f[0].Ok);
+        Assert.Equal(300, f[0].PayloadLength);
+    }
+
+    [Fact]
+    public void FourByteLength_HighBitOverflow_DoesNotThrow()
+    {
+        // 回归：长度域 int 累加在 4 字节最高位置位时溢出为负 → 曾抛 ArgumentOutOfRangeException 终结进程
+        var t = new FrameTemplate
+        {
+            Name = "四字节大端长度",
+            Header = "AA 55",
+            Fields = { new FrameField { Kind = "length", Size = 4, BigEndian = true }, new FrameField { Kind = "data" } },
+            Checksum = "xor",
+        };
+        t.MaxFrameLength = 32;
+        var noise = H("AA 55 80 00 00 05 01 02 03 04 05");  // 长度 0x80000005（溢出值）→ 假帧头跳过
+        var good = new byte[] { 0x00, 0x00, 0x00, 0x02, 0x99, 0x88 }; // 长度 2 + 载荷
+        var f = Run(t, noise.Concat(AppendCk(t, H("AA 55").Concat(good).ToArray())).ToArray());
+        Assert.Single(f);
+        Assert.True(f[0].Ok);
+        Assert.Equal(2, f[0].PayloadLength);
+    }
+
+    [Fact]
+    public void FourByteLength_HighBitOverflow_LittleEndian_DoesNotThrow()
+    {
+        var t = new FrameTemplate
+        {
+            Name = "四字节小端长度",
+            Header = "AA 55",
+            Fields = { new FrameField { Kind = "length", Size = 4, BigEndian = false }, new FrameField { Kind = "data" } },
+            Checksum = "xor",
+        };
+        t.MaxFrameLength = 32;
+        var noise = H("AA 55 05 00 00 80 01 02 03 04 05");  // 小端 0x80000005
+        var good = new byte[] { 0x02, 0x00, 0x00, 0x00, 0x99, 0x88 };
+        var f = Run(t, noise.Concat(AppendCk(t, H("AA 55").Concat(good).ToArray())).ToArray());
+        Assert.Single(f);
+        Assert.True(f[0].Ok);
+        Assert.Equal(2, f[0].PayloadLength);
+    }
+
+    [Fact]
     public void Reset_ClearsBuffer()
     {
         var t = FrameTemplate.Samples()[2];

@@ -165,11 +165,13 @@ public sealed class FrameParser
                 case "length":
                 {
                     if (buf.Count < offset + f.Size) return TryResult.NeedMore;
-                    var v = 0;
+                    // long 累加：4 字节域最高位置位时 int 会溢出为负（v > MaxFrameLength 拦不住负值，
+                    // 后续 offset += payLen 回退再 GetRange 负长度即抛异常——线路噪声可远程触发崩溃）
+                    var v = 0L;
                     for (var i = 0; i < f.Size; i++)
-                        v = f.BigEndian ? (v << 8) | buf[offset + i] : v | (buf[offset + i] << (8 * i));
+                        v = f.BigEndian ? (v << 8) | buf[offset + i] : v | ((long)buf[offset + i] << (8 * i));
                     if (v > t.MaxFrameLength) return TryResult.Mismatch; // 假帧头
-                    payLen = v;
+                    payLen = (int)v;
                     hasLength = true;
                     offset += f.Size;
                     break;
