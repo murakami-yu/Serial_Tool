@@ -25,6 +25,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="名称" VerticalAlignment="Center"
@@ -41,12 +42,17 @@
                     <ComboBoxItem Content="JTAG"/>
                 </ComboBox>
                 <TextBox x:Name="DeviceBox" VerticalAlignment="Center" MinWidth="160"
-                         ToolTip="J-Link 器件名，如 STM32F407VG / nRF52840_xxAA（须与目标芯片一致）"/>
+                         ToolTip="J-Link 器件名，如 STM32F103C8 / nRF52840_xxAA / STM32F407VG（须与目标芯片一致）"/>
             </DockPanel>
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="速度" VerticalAlignment="Center"
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="探针 S/N" VerticalAlignment="Center"
                        Foreground="{DynamicResource MutedBrush}"/>
-            <DockPanel Grid.Row="2" Grid.Column="1" Margin="12,4,0,4">
+            <TextBox x:Name="SnBox" Grid.Row="2" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
+                     ToolTip="J-Link 探针序列号（留空 = 默认 USB 探针；检测到探针时自动填入，多探针可改）"/>
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="速度" VerticalAlignment="Center"
+                       Foreground="{DynamicResource MutedBrush}"/>
+            <DockPanel Grid.Row="3" Grid.Column="1" Margin="12,4,0,4">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <TextBlock Text="通道" VerticalAlignment="Center" Margin="14,0,6,0"
                                Foreground="{DynamicResource MutedBrush}"/>
@@ -71,14 +77,17 @@
                            Foreground="{DynamicResource MutedBrush}"/>
             </DockPanel>
 
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="控制块" VerticalAlignment="Center"
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="控制块" VerticalAlignment="Center"
                        Foreground="{DynamicResource MutedBrush}"
                        ToolTip="_SEGGER_RTT 控制块地址；固件含符号表或未裁剪时自动搜索即可命中"/>
-            <TextBox x:Name="AddrBox" Grid.Row="3" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
+            <TextBox x:Name="AddrBox" Grid.Row="4" Grid.Column="1" Margin="12,4,0,4" VerticalAlignment="Center"
                      ToolTip="RTT 控制块地址（hex，可带 0x）。留空 = 自动搜索 RAM（固件用 --gc-sections/LTO 裁掉控制块时须手填）"/>
         </Grid>
 
-        <CheckBox x:Name="SaveBox" Content="保存到会话列表" Margin="0,12,0,0"/>
+        <CheckBox x:Name="ResetBox" Content="连接后复位目标并运行（推荐：目标 halt 状态自愈，固件重新初始化 RTT）"
+                  IsChecked="True" Margin="0,12,0,0"
+                  ToolTip="RTT-T 同款行为：调试连接常使目标停机，复位+运行保证固件跑起来、RTT 控制块被初始化"/>
+        <CheckBox x:Name="SaveBox" Content="保存到会话列表" Margin="0,8,0,0"/>
 
         <TextBlock x:Name="Err" Foreground="#C00000" Margin="0,8,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
 

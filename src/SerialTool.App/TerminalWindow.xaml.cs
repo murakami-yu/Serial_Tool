@@ -410,8 +410,10 @@ public partial class TerminalWindow : Window
         {
             var name = req.SaveName ?? $"{req.Device} · RTT{req.Channel}";
             // SavedSession 字段复用（Kind="rtt"）：Host=器件名 Port=速度kHz User=通道 AuthIndex=接口 KeyPath=控制块地址hex
+            // Notes 编码 RTT 附加参数：sn=探针S/N;reset=1/0
             _saved.AddOrUpdate(new SavedSession(name, "rtt", req.Device, req.SpeedKhz,
-                req.Channel.ToString(), req.Iface, req.ControlBlockAddress is { } a ? $"0x{a:X}" : ""));
+                req.Channel.ToString(), req.Iface, req.ControlBlockAddress is { } a ? $"0x{a:X}" : "",
+                $"sn={req.SerialNumber?.ToString() ?? ""};reset={(req.ResetTarget ? 1 : 0)}"));
             RefreshSavedCombo();
         }
 
@@ -420,11 +422,16 @@ public partial class TerminalWindow : Window
         var title = $"{req.Device} · RTT{req.Channel}";
         var session = TerminalSession.Rtt(backend, view, title);
 
+        // 连接开始即留痕（真机排障关键）：之前只在成败后记账，卡在连接中时现场日志一片空白无从判断
+        Services.AppLog.Info(
+            $"独立 RTT 会话连接开始：{req.Device} {(req.Iface == 1 ? "JTAG" : "SWD")}@{req.SpeedKhz}kHz" +
+            $" ch{req.Channel} sn={req.SerialNumber?.ToString() ?? "默认"}" +
+            $" 控制块={(req.ControlBlockAddress is { } cb ? $"0x{cb:X}" : "自动")} 复位={(req.ResetTarget ? "开" : "关")}");
         try
         {
             // 后台线程连接：J-Link 探针连接 + RTT 控制块搜索阻塞可达数秒，不能卡 UI
             var cfg = new Backends.Rtt.RttConfig(req.Device, req.SpeedKhz, req.Iface,
-                req.Channel, req.ControlBlockAddress);
+                req.Channel, req.ControlBlockAddress, req.SerialNumber, req.ResetTarget);
             await Task.Run(() => backend.Open(cfg));
         }
         catch (Exception ex)

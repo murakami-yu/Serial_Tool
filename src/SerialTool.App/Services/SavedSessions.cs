@@ -7,9 +7,11 @@ namespace SerialTool.App.Services;
 
 /// <summary>已保存的终端会话（密码/口令绝不落盘）。</summary>
 /// <param name="Name">显示名。</param>
-/// <param name="Kind">"ssh"（M4 扩展 "telnet"）。</param>
+/// <param name="Kind">"ssh"（M4 扩展 "telnet" / "rtt"）。</param>
+/// <param name="Notes">附加参数（RTT 用 "sn=xxx;reset=1"；SSH/Telnet 不用）。旧 JSON 缺省为空。</param>
 public sealed record SavedSession(
-    string Name, string Kind, string Host, int Port, string User, int AuthIndex, string KeyPath);
+    string Name, string Kind, string Host, int Port, string User, int AuthIndex, string KeyPath,
+    string Notes = "");
 
 /// <summary>保存会话列表：Config/terminal_sessions.json（按名称去重）。</summary>
 public sealed class SavedSessionsStore

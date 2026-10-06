@@ -1,8 +1,10 @@
 namespace SerialTool.Backends.Rtt;
 
-/// <summary>RTT 连接参数。Interface：0=SWD，1=JTAG；ControlBlockAddress=null 自动搜索 RAM（大 RAM 芯片首连可达数秒）。</summary>
+/// <summary>RTT 连接参数。Interface：0=SWD，1=JTAG；SerialNumber=null 取默认 USB 探针；
+/// ResetTarget=连接后复位目标并运行（RTT-T 同款默认，防目标 halt 固件不跑）；
+/// ControlBlockAddress=null 自动搜索 RAM（大 RAM 芯片首连可达数秒）。</summary>
 public sealed record RttConfig(string Device, int SpeedKhz = 4000, int Interface = 0,
-    int Channel = 0, uint? ControlBlockAddress = null);
+    int Channel = 0, uint? ControlBlockAddress = null, uint? SerialNumber = null, bool ResetTarget = true);
 
 /// <summary>SEGGER RTT 后端接口。</summary>
 public interface IRttBackend : IBusBackend
@@ -15,7 +17,9 @@ public interface IRttBackend : IBusBackend
 /// <summary>
 /// SEGGER RTT 后端：经 J-Link 探针读写目标机 RAM 中的 RTT 环形缓冲（需固件已集成 SEGGER RTT）。
 /// 与串口/SSH 后端同构的事件流，终端视图等上层功能复用。
-/// J-Link DLL 由 <see cref="JLinkNative"/> 进程级常驻；本后端实例只持连接，Close 即 JLINK_Close。
+/// 连接序列对齐 pylink-square（RTT-T 的底层库）：选探针→OpenEx→TIF→速度→Device（触发自动连接）
+/// →未连则 Connect→复位+运行→RTT START。
+/// J-Link DLL 由 <see cref="JLinkNative"/> 进程级常驻；本后端实例只持连接，Close 即 JLINKARM_Close。
 /// 注意：J-Link DLL 同进程默认单连接——同时只允许一个 RttBackend 处于打开状态。
 /// </summary>
 public sealed class RttBackend : IRttBackend
@@ -52,7 +56,7 @@ public sealed class RttBackend : IRttBackend
     public event EventHandler<string>? ErrorOccurred;
 
     /// <summary>枚举 USB 上的 J-Link 探针。未装 J-Link 软件/无探针返回空列表（不抛）。
-    /// M1 多探针时连接默认取第一个，列表仅展示用（按 S/N 选择留 M3）。</summary>
+    /// 单探针时 UI 会把 S/N 预填进连接框；多探针按 S/N 选择。</summary>
     public IReadOnlyList<DeviceInfo> Scan()
     {
         if (!JLinkNative.TryLoad(out var jlink, out _))
@@ -86,27 +90,38 @@ public sealed class RttBackend : IRttBackend
         {
             lock (jlink.Gate)
             {
-                Exec(jlink, $"device = {cfg.Device}", $"未知或不受支持的器件名 {cfg.Device}");
-                Exec(jlink, $"si = {(cfg.Interface == 1 ? "JTAG" : "SWD")}", "设置调试接口失败");
-                Exec(jlink, $"speed = {cfg.SpeedKhz}", "设置接口速度失败");
-
-                var ret = jlink.Open();
-                if (ret < 0)
-                    throw new InvalidOperationException($"打开 J-Link 探针失败（{Describe(ret)}）");
+                // 序列对齐 pylink（RTT-T 底层库）——顺序有讲究：
+                // 'Device =' 命令会触发自动连接，必须先设好接口与速度，否则用默认接口连错目标
+                jlink.OpenProbe(cfg.SerialNumber); // 选探针（S/N 或默认 USB0）+ JLINKARM_OpenEx（日志回调接 JLinkLog）
                 dllOpened = true;
 
-                // ExecCommand 错误常延迟到这里才暴露（弱语义）：器件名/接口错多报 -261 找不到 CPU
-                ret = jlink.Connect();
-                if (ret < 0)
-                    throw new InvalidOperationException(
-                        $"J-Link 连接目标失败（{Describe(ret)}）：请检查器件名/接口/接线/目标供电");
+                if (!jlink.TifSelect(cfg.Interface == 1))
+                    throw new InvalidOperationException($"设置调试接口失败（{(cfg.Interface == 1 ? "JTAG" : "SWD")} 不受探针/目标支持）");
+                jlink.SetSpeed(cfg.SpeedKhz);
 
-                ret = jlink.RttStart(cfg.ControlBlockAddress ?? 0);
-                if (ret < 0)
+                if (jlink.DeviceSupported(cfg.Device) == false)
+                    throw new InvalidOperationException($"未知或不受支持的器件名 {cfg.Device}（须与目标芯片一致，如 STM32F103C8 / nRF52840_xxAA）");
+                Exec(jlink, $"Device = {cfg.Device}", $"器件名 {cfg.Device} 设置失败");
+
+                if (!jlink.IsConnected())
                 {
-                    var msg = ret == -2
+                    // ExecCommand 错误常延迟到这里才暴露（弱语义）：器件名/接口错多报 -261 找不到 CPU
+                    var ret = jlink.Connect();
+                    if (ret < 0)
+                        throw new InvalidOperationException(
+                            $"J-Link 连接目标失败（{Describe(ret)}）：请检查器件名/接口/接线/目标供电");
+                }
+
+                // 复位+运行（RTT-T「每次连接复位 MCU」）：连接调试常令目标 halt，不跑固件 RTT 控制块就无人初始化
+                if (cfg.ResetTarget)
+                    jlink.ResetAndRun();
+
+                var ret2 = StartRtt(jlink, cfg);
+                if (ret2 < 0)
+                {
+                    var msg = ret2 == -2
                         ? "RTT 控制块未找到：确认固件已初始化 SEGGER RTT 且控制块未被链接器裁剪（--gc-sections/LTO），或在连接时手动指定控制块地址"
-                        : $"启动 RTT 失败（{Describe(ret)}）";
+                        : $"启动 RTT 失败（{Describe(ret2)}）";
                     try { jlink.RttStop(); } catch { /* 清理路径失败忽略 */ }
                     throw new InvalidOperationException(msg);
                 }
@@ -230,6 +245,19 @@ public sealed class RttBackend : IRttBackend
         var ret = jlink.ExecCommand(cmd);
         if (ret < 0)
             throw new InvalidOperationException($"{errPrefix}（{Describe(ret)}）");
+    }
+
+    /// <summary>RTT START；复位过目标时 -2（控制块未找到）补一次重试——复位后固件初始化 RTT 需要片刻，
+    /// 立即搜索可能扑空（pylink/RTT-T 无此场景：它们复位后同样立刻 start，靠 DLL 后台续搜；这里显式重试一次更稳）。</summary>
+    private static int StartRtt(JLinkNative jlink, RttConfig cfg)
+    {
+        var ret = jlink.RttStart(cfg.ControlBlockAddress);
+        if (ret == -2 && cfg.ResetTarget && cfg.ControlBlockAddress is null)
+        {
+            Thread.Sleep(300);
+            ret = jlink.RttStart(cfg.ControlBlockAddress);
+        }
+        return ret;
     }
 
     private void ReleaseSlot()
