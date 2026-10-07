@@ -31,6 +31,10 @@
                     ToolTip="新建本地终端（ConPTY 承载 PowerShell / cmd，零外部依赖）"/>
             <Button x:Name="NewRttBtn" DockPanel.Dock="Left" Content="+ RTT" Click="NewRtt_Click" FontWeight="Bold" Margin="6,0,0,0"
                     ToolTip="新建 SEGGER RTT 会话（经 J-Link 探针读写目标机 RAM 环形缓冲，需 J-Link 软件与已集成 RTT 的固件；同时仅一个连接）"/>
+            <Button DockPanel.Dock="Right" Content="导出" Click="ExportActive_Click" Margin="6,0,0,0" MinWidth="52"
+                    ToolTip="把当前标签终端的全部内容（含滚回）另存为 txt 文件"/>
+            <Button x:Name="LogToggleBtn" DockPanel.Dock="Right" Content="日志" Click="LogToggle_Click" Margin="6,0,0,0" MinWidth="52"
+                    ToolTip="开启/停止当前标签的实时日志（接收数据原样落盘到 Logs/terminal/，RTT-T「实时保存」同款）"/>
             <Button DockPanel.Dock="Right" Content="删除" Click="DeleteSaved_Click" Margin="6,0,0,0"
                     ToolTip="删除选中的已保存会话（仅列表项，不影响连接）"/>
             <Button DockPanel.Dock="Right" Content="连接" Click="ConnectSaved_Click" Margin="6,0,0,0"

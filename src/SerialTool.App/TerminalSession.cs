@@ -21,6 +21,54 @@ public sealed class TerminalSession : IDisposable
     /// <summary>状态文本（标签工具提示 / 预留状态点）。</summary>
     public string Status { get; set; } = "";
 
+    // ---------- 实时日志（RTT-T「实时保存」同款）：接收字节 UTF-8 解码后原样落盘 ----------
+
+    private Services.SessionLogger? _logger;
+    private System.Text.Decoder? _logDecoder; // 跨接收包的多字节字符状态（防中文截断成乱码）
+
+    /// <summary>实时日志是否开启。</summary>
+    public bool Logging => _logger is { IsActive: true };
+
+    /// <summary>当前日志文件路径（未开启为 null）。</summary>
+    public string? LogPath => _logger?.FilePath;
+
+    /// <summary>开启实时日志（已开则先停）。返回文件路径。</summary>
+    public string StartLogging(string path)
+    {
+        StopLogging();
+        _logger = new Services.SessionLogger();
+        _logger.Open(path);
+        _logDecoder = System.Text.Encoding.UTF8.GetDecoder();
+        return path;
+    }
+
+    /// <summary>停止实时日志（幂等；Dispose 路径亦调用）。</summary>
+    public void StopLogging()
+    {
+        _logger?.Dispose();
+        _logger = null;
+        _logDecoder = null;
+    }
+
+    /// <summary>读线程回调：接收字节解码后落盘（未开启静默忽略）。</summary>
+    private void LogBytes(ReadOnlySpan<byte> data)
+    {
+        var logger = _logger;
+        var decoder = _logDecoder;
+        if (logger is null || decoder is null) return;
+        try
+        {
+            var chars = new char[decoder.GetCharCount(data, false)];
+            decoder.GetChars(data, chars, false);
+            if (chars.Length > 0)
+                logger.Write(new string(chars));
+        }
+        catch
+        {
+            // 日志绝不影响收发
+        }
+    }
+
     private TerminalSession(string title, TerminalView view, IBusBackend? backend)
     {
         Title = title;
@@ -36,7 +84,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Ssh(Backends.Ssh.SshBackend backend, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, backend);
-        backend.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);        // 读线程 → 线程安全入队
+        backend.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };   // 读线程 → 线程安全入队
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Error($"独立 SSH 会话中断（{title}）：{msg}");
@@ -60,7 +108,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Rtt(Backends.Rtt.RttBackend backend, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, backend);
-        backend.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
+        backend.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Error($"独立 RTT 会话中断（{title}）：{msg}");
@@ -83,7 +131,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Telnet(Backends.Telnet.TelnetBackend backend, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, backend);
-        backend.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
+        backend.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Error($"独立 Telnet 会话中断（{title}）：{msg}");
@@ -101,7 +149,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Local(Services.ConPtySession con, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, con);
-        con.DataReceived += (_, e) => view.EnqueueBytes(e.Bytes);
+        con.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };
         con.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Info($"本地终端会话退出（{title}）：{msg}");
@@ -119,6 +167,7 @@ public sealed class TerminalSession : IDisposable
     /// <summary>关闭会话：独立会话断开 backend 并释放视图（主连接会话仅释放视图，连接归主面板管）。</summary>
     public void Dispose()
     {
+        StopLogging();
         Backend?.Close();
         Backend?.Dispose();
         View.Dispose();

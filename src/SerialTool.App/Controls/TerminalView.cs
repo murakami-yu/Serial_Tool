@@ -1082,6 +1082,19 @@ public class TerminalView : Grid
         ViewportChanged?.Invoke();
     }
 
+    /// <summary>导出整个缓冲（含滚回）为多行文本——逐行 TranslateToString 右去空白，
+    /// 行尾按实际内容保留（RTT 日志导出用）。</summary>
+    public string ExportAllText()
+    {
+        var sb = new System.Text.StringBuilder();
+        var buf = _terminal.Buffer;
+        for (var i = 0; i < buf.Length; i++)
+        {
+            sb.AppendLine(buf.GetLine(i).TranslateToString(true, 0, buf.Cols));
+        }
+        return sb.ToString();
+    }
+
     private ContextMenu BuildContextMenu()
     {
         var menu = new ContextMenu();

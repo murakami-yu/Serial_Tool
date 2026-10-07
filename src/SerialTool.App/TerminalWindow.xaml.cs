@@ -56,14 +56,80 @@ public partial class TerminalWindow : Window
         if (!_vm.IsPortOpen)
             StartLocalSession();
 
-        Sessions.SelectionChanged += (_, _) => FocusActiveView();
+        Sessions.SelectionChanged += (_, _) => { FocusActiveView(); UpdateLogButton(); };
         // 开箱即用配套的焦点修正：构造期自动开本地标签时窗口尚未显示，SelectionChanged 里的
         // Focus() 静默失败——窗口加载完成后补聚焦，否则用户"打开终端窗打字"第一轮按键落空
-        Loaded += (_, _) => FocusActiveView();
+        Loaded += (_, _) => { FocusActiveView(); UpdateLogButton(); };
+        UpdateLogButton(); // 构造期初始态（主连接标签：日志按钮禁用）
     }
 
     /// <summary>读取线程回调：仅入队（线程安全），UI 泵统一消费。</summary>
     private void OnRawRx(object? sender, byte[] bytes) => _mainView.EnqueueBytes(bytes);
+
+    // ---------- 会话日志（RTT-T「实时保存/全量导出」同款） ----------
+
+    /// <summary>当前选中标签的会话（无标签为 null）。</summary>
+    private TerminalSession? ActiveSession =>
+        _tabs.Find(t => ReferenceEquals(t.Tab, Sessions.SelectedItem))?.Session;
+
+    /// <summary>日志按钮状态随选中标签刷新（开启中 →「停止」+ 路径提示）。</summary>
+    private void UpdateLogButton()
+    {
+        var s = ActiveSession;
+        var logging = s is { Logging: true };
+        LogToggleBtn.Content = logging ? "停止" : "日志";
+        LogToggleBtn.IsEnabled = s is { IsMain: false };
+        LogToggleBtn.ToolTip = s is null || s.IsMain
+            ? "选择一个独立会话标签（RTT/SSH/Telnet/本地）后开启实时日志"
+            : logging ? $"实时记录中 → {s.LogPath}（点击停止）" : "开启当前标签的实时日志（接收数据原样落盘 Logs/terminal/）";
+    }
+
+    /// <summary>「日志」开关：当前独立会话的接收数据实时落盘。</summary>
+    private void LogToggle_Click(object sender, RoutedEventArgs e)
+    {
+        var s = ActiveSession;
+        if (s is null || s.IsMain) return;
+        if (s.Logging)
+        {
+            var path = s.LogPath;
+            s.StopLogging();
+            Services.AppLog.Info($"终端会话日志停止：{s.Title}（{path}）");
+        }
+        else
+        {
+            var safe = string.Join("_", s.Title.Split(System.IO.Path.GetInvalidFileNameChars())).Trim();
+            var path = System.IO.Path.Combine(AppContext.BaseDirectory, "Logs", "terminal",
+                $"{safe}_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+            s.StartLogging(path);
+            Services.AppLog.Info($"终端会话日志开启：{s.Title} → {path}");
+        }
+        UpdateLogButton();
+    }
+
+    /// <summary>「导出」：当前标签终端全部内容（含滚回）另存 txt。</summary>
+    private void ExportActive_Click(object sender, RoutedEventArgs e)
+    {
+        var s = ActiveSession;
+        if (s is null) return;
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = $"导出终端内容（含滚回）——{s.Title}",
+            Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
+            FileName = $"{s.Title.Split(System.IO.Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)
+                              .Aggregate("", (a, b) => a.Length == 0 ? b : a + "_" + b)}_{DateTime.Now:yyyyMMdd_HHmmss}.txt",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            System.IO.File.WriteAllText(dlg.FileName, s.View.ExportAllText());
+            Services.AppLog.Info($"终端内容导出：{s.Title} → {dlg.FileName}（{System.IO.Path.GetFileName(dlg.FileName)}）");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"导出失败：{ex.Message}", "导出终端内容",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
