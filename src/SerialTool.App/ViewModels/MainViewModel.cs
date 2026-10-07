@@ -1630,10 +1630,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var existing = CaptureRxText?.Invoke();
             if (!string.IsNullOrEmpty(existing))
             {
-                _logger.WriteLine("----- 开启前接收区内容 -----");
+                // 与终端会话日志同规则：倾倒内容与实时数据直接拼接，不插入额外标记
                 _logger.Write(existing.Replace("\r\n", Environment.NewLine));
                 if (!existing.EndsWith("\n")) _logger.WriteLine("");
-                _logger.WriteLine($"----- 实时记录开始 {DateTime.Now:HH:mm:ss.fff} -----");
             }
             AppLog.Info($"会话数据日志开启：{LogFilePath}");
         }

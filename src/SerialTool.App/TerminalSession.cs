@@ -69,13 +69,13 @@ public sealed class TerminalSession : IDisposable
     public string? LogPath => _logger?.FilePath;
 
     /// <summary>开启实时日志（已开则先停）。返回文件路径。
-    /// 开启即倾倒当前终端全部内容（含滚回）——用户反馈：日志应包含开启前已收到的数据，不只记接下来的。</summary>
+    /// 开启即倾倒当前终端全部内容（含滚回）与后续实时数据直接拼接——用户规则：
+    /// 包含开启前已收到的数据，且不插入任何标记行，文件内容与终端所见完全一致。</summary>
     public string StartLogging(string path)
     {
         StopLogging();
         _logger = new Services.SessionLogger();
         _logger.Open(path);
-        _logger.WriteLine($"===== 终端会话日志开启 {DateTime.Now:yyyy-MM-dd HH:mm:ss}（先落盘开启前全部内容） =====");
         try
         {
             var existing = View.ExportAllText(); // UI 线程调用（LogToggle 路径）
@@ -86,7 +86,6 @@ public sealed class TerminalSession : IDisposable
         {
             // 倾倒失败不影响后续实时记录
         }
-        _logger.WriteLine($"----- 实时记录开始 {DateTime.Now:HH:mm:ss.fff} -----");
         _logDecoder = System.Text.Encoding.UTF8.GetDecoder();
         return path;
     }
