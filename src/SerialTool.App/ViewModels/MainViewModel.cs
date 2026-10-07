@@ -1619,13 +1619,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>开启日志：打开文件并写会话头。</summary>
+    /// <summary>开启日志：打开文件并写会话头，随后倾倒接收区当前全部内容
+    ///（用户规则：日志包含开启前已收到的数据，不只记接下来的；文本由 MainWindow 注入捕获）。</summary>
     private void StartLogging()
     {
         try
         {
             _logger.Open(LogFilePath);
             _logger.WriteLine($"===== Serial Tool 会话 {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====");
+            var existing = CaptureRxText?.Invoke();
+            if (!string.IsNullOrEmpty(existing))
+            {
+                _logger.WriteLine("----- 开启前接收区内容 -----");
+                _logger.Write(existing.Replace("\r\n", Environment.NewLine));
+                if (!existing.EndsWith("\n")) _logger.WriteLine("");
+                _logger.WriteLine($"----- 实时记录开始 {DateTime.Now:HH:mm:ss.fff} -----");
+            }
             AppLog.Info($"会话数据日志开启：{LogFilePath}");
         }
         catch (Exception ex)
@@ -1635,6 +1644,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             StatusText = $"日志开启失败: {ex.Message}";
         }
     }
+
+    /// <summary>接收区当前全文捕获（MainWindow 注入；RichTextBox 文本，行尾 \r\n）。</summary>
+    public Func<string>? CaptureRxText { get; set; }
 
     // ---------- 数据流 ----------
 

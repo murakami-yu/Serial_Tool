@@ -52,6 +52,8 @@ public partial class MainWindow : Window
             vm.RxRendered += OnRxRendered;
             vm.HostKeyChallenge += OnHostKeyChallenge;
             vm.PropertyChanged += OnVmPropertyChanged;
+            // 会话日志开启时倾倒接收区当前全文（用户规则：日志含开启前已收到的数据）
+            vm.CaptureRxText = () => new TextRange(RxOutput.Document.ContentStart, RxOutput.Document.ContentEnd).Text;
         }
         // 主窗 Closing 先于两子窗口的关闭流程：先把它们切到真实关闭模式，
         // 否则其「X = 回写关闭」语义会取消关闭，导致主窗关了进程却不退
