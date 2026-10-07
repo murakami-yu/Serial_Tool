@@ -61,15 +61,10 @@ public sealed class RttBackend : IRttBackend
     {
         if (!JLinkNative.TryLoad(out var jlink, out _))
             return Array.Empty<DeviceInfo>();
-        var sns = new uint[32];
-        int count;
+        List<uint> sns;
         lock (jlink!.Gate)
-            count = jlink.EmuGetListUsb(sns);
-        if (count <= 0)
-            return Array.Empty<DeviceInfo>();
-        return Enumerable.Range(0, Math.Min(count, sns.Length))
-            .Select(i => new DeviceInfo(sns[i].ToString(), $"J-Link S/N {sns[i]}"))
-            .ToList();
+            sns = jlink.EnumUsbSerialNumbers();
+        return sns.Select(sn => new DeviceInfo(sn.ToString(), $"J-Link S/N {sn}")).ToList();
     }
 
     public void Open(RttConfig cfg)
@@ -90,6 +85,18 @@ public sealed class RttBackend : IRttBackend
         {
             lock (jlink.Gate)
             {
+                // 探针前置检查（RTT Viewer 同款策略）：**无探针绝不进 OpenEx**——
+                // J-Link DLL 在 GUI 进程里 OpenEx 失败路径会尝试弹错误框，无消息泵线程上无限阻塞
+                // （2026-10-07 实测：无探针时 WPF/GUI-python 挂死、控制台秒回错误串；有探针则正常）。
+                // 前置枚举把该场景转为毫秒级明确报错。
+                var online = jlink.EnumUsbSerialNumbers();
+                if (online.Count == 0)
+                    throw new InvalidOperationException(
+                        "未检测到 USB 上的 J-Link 探针：请检查探针连接/驱动（可在 SEGGER J-Link Control Panel 中确认）");
+                if (cfg.SerialNumber is { } want && !online.Contains(want))
+                    throw new InvalidOperationException(
+                        $"未找到 S/N {want} 的 J-Link 探针（当前在线：{string.Join("、", online)}）");
+
                 // 序列对齐 pylink（RTT-T 底层库）——顺序有讲究：
                 // 'Device =' 命令会触发自动连接，必须先设好接口与速度，否则用默认接口连错目标
                 jlink.OpenProbe(cfg.SerialNumber); // 选探针（S/N 或默认 USB0）+ JLINKARM_OpenEx（日志回调接 JLinkLog）

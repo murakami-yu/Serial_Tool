@@ -24,6 +24,9 @@ internal sealed class JLinkNative
     // JLinkHost.USB
     private const int HostIfUsb = 1;
 
+    // unsecure 弹窗回调返回的按钮码（pylink JLinkFlags）：YES=1 / NO=2 / OK=4 / CANCEL=8
+    private const int DlgButtonNo = 2;
+
     // JLINKARM_TIF_Select 接口号（pylink JLinkInterfaces：JTAG=0 / SWD=1——与本应用配置编码相反）
     private const int TifJtag = 0;
     private const int TifSwd = 1;
@@ -49,6 +52,8 @@ internal sealed class JLinkNative
 
     // 可选导出（旧版 DLL 可能没有）：缺失则降级跳过对应特性，不阻断加载
     private readonly DSetHookUnsecureDialog? _setHook;
+    private readonly DSetOutHandler? _setErrOut;
+    private readonly DSetOutHandler? _setWarnOut;
     private readonly DDeviceGetIndex? _deviceGetIndex;
     private readonly DSetResetDelay? _setResetDelay;
     private readonly DReset? _reset;
@@ -94,8 +99,12 @@ internal sealed class JLinkNative
             throw;
         }
 
-        // 可选导出：拿不到不算致命（旧 DLL 降级：无弹窗 hook / 无器件名校验 / 无目标复位）
-        _setHook = TryBind<DSetHookUnsecureDialog>("JLINKARM_SetHookUnsecureDialog");
+        // 可选导出：拿不到不算致命（旧 DLL 降级：无弹窗 hook / 无输出回调 / 无器件名校验 / 无目标复位）
+        // hook 导出名 v9.82 实测为 JLINK_SetHookUnsecureDialog（无 ARM 前缀，pylink 同名）；两个名字都试
+        _setHook = TryBind<DSetHookUnsecureDialog>("JLINK_SetHookUnsecureDialog")
+                   ?? TryBind<DSetHookUnsecureDialog>("JLINKARM_SetHookUnsecureDialog");
+        _setErrOut = TryBind<DSetOutHandler>("JLINKARM_SetErrorOutHandler");
+        _setWarnOut = TryBind<DSetOutHandler>("JLINKARM_SetWarnOutHandler");
         _deviceGetIndex = TryBind<DDeviceGetIndex>("JLINKARM_DEVICE_GetIndex");
         _setResetDelay = TryBind<DSetResetDelay>("JLINKARM_SetResetDelay");
         _reset = TryBind<DReset>("JLINKARM_Reset");
@@ -103,24 +112,40 @@ internal sealed class JLinkNative
 
         Version = _getDllVersion();
 
-        // 弹窗抑制：装上回调后 DLL 出错走回调而非自己的 MessageBox（否则连接失败会弹原生对话框卡线程）。
-        // 必须早于任何探针打开。
-        _setHook?.Invoke(HookCallback);
-        ExecCommand("HideDeviceSelectionDialog = 1"); // 兜底：hook 未必覆盖所有弹框类型
+        // 注意：加载期不做任何其他 DLL 交互（不装 hook、不发命令）——pylink 同样只在 open() 后装 hook。
+        // v1.4.12 曾在加载即 SetHookUnsecureDialog + HideDeviceSelectionDialog，且 hook 委托签名错
+        // （真实签名 = 三参数 int 返回：title/msg/flags→按钮码；错签名 = DLL 读到垃圾按钮码 →
+        //   其内部线程行为未定义 → 进程原生崩溃直接消失，无任何托管日志——2026-10-07 真机闪退根因）
     }
 
     /// <summary>静态回调根持（委托被 GC 回收后再被 native 调用 = 崩溃）。
     /// 方法组到含指针签名委托的转换须 unsafe 上下文，经工厂方法桥接；static 保证不捕获 this。</summary>
-    private static readonly DLogCallback HookCallback = CreateHook();
+    private static readonly DHookUnsecureDialog HookCallback = CreateHook();
     private static readonly DLogCallback DllLogCallback = CreateLogCb();
     private static readonly DLogCallback DllErrCallback = CreateErrCb();
 
-    private static unsafe DLogCallback CreateHook() => OnUnsecureDialog;
+    private static unsafe DHookUnsecureDialog CreateHook() => OnUnsecureDialog;
     private static unsafe DLogCallback CreateLogCb() => OnDllLog;
     private static unsafe DLogCallback CreateErrCb() => OnDllError;
 
-    /// <summary>以下回调只做字符串转发，try/catch 全包：异常穿越 native 边界 = 进程崩溃，取锁 = 潜在死锁。</summary>
-    private static unsafe void OnUnsecureDialog(byte* msgPtr) => Forward(msgPtr, "DLL: ");
+    /// <summary>unsecure 弹窗裁决（如 nRF52 APPROTECT 解锁确认）：pylink 默认策略 = 一律回答「No」。
+    /// 签名必须精确：int fn(const char* title, const char* msg, U32 flags)——返回值是按钮码，
+    /// 签名不符时 DLL 读到垃圾按钮码即原生崩溃。只做字符串转发，异常绝不穿越 native 边界。</summary>
+    private static unsafe int OnUnsecureDialog(byte* titlePtr, byte* msgPtr, uint flags)
+    {
+        try
+        {
+            var title = titlePtr != null ? Marshal.PtrToStringAnsi((IntPtr)titlePtr) : null;
+            var msg = msgPtr != null ? Marshal.PtrToStringAnsi((IntPtr)msgPtr) : null;
+            if (!string.IsNullOrEmpty(title) || !string.IsNullOrEmpty(msg))
+                Log?.Invoke($"DLL 弹窗裁决（回答=否）：[{title}] {msg}");
+        }
+        catch
+        {
+            // 绝不允许异常穿越 native 边界
+        }
+        return DlgButtonNo; // pylink util.unsecure_hook_dialog 同款：JLinkFlags.DLG_BUTTON_NO = 2
+    }
 
     private static unsafe void OnDllLog(byte* msgPtr) => Forward(msgPtr, "DLL: ");
 
@@ -198,10 +223,16 @@ internal sealed class JLinkNative
     }
 
     /// <summary>打开探针（pylink open() 同款）：先选探针（S/N 或默认 USB0），再 JLINKARM_OpenEx。
-    /// OpenEx 的日志/错误回调接进 <see cref="Log"/>——DLL 全程输出可见，现场排障不再两眼一抹黑。
-    /// 失败抛异常（消息含 DLL 给出的原因，如另一进程占用探针）。</summary>
+    /// **OpenEx 之前必须注册错误/警告输出回调**（pylink 同款顺序）——DLL 在 GUI 进程里出错时若没有
+    /// 输出回调兜底，会尝试弹自己的错误对话框 → 在无消息泵的线程上无限阻塞（2026-10-07 开发机
+    /// 实测：无探针时 OpenEx 在 WPF 进程挂起、控制台进程秒回错误串，线程栈钉在 OpenEx 内）。
+    /// OpenEx 的日志/错误回调接进 <see cref="Log"/>——DLL 全程输出可见。失败抛异常（消息含 DLL 原因）。</summary>
     public void OpenProbe(uint? serialNumber)
     {
+        // 输出回调先行（pylink：SetErrorOutHandler/SetWarnOutHandler 须在 open 之前注册，open 后为 no-op）
+        _setErrOut?.Invoke(DllErrCallback);
+        _setWarnOut?.Invoke(DllErrCallback);
+
         if (serialNumber is { } sn)
         {
             if (_selectByUsbSn(sn) < 0)
@@ -221,6 +252,10 @@ internal sealed class JLinkNative
                 ? "打开 J-Link 探针失败"
                 : $"打开 J-Link 探针失败：{msg}（探针可能被 J-Link RTT Viewer 等其他程序占用）");
         }
+
+        // unsecure 弹窗裁决 hook：pylink 同款时机（OpenEx 之后）——DLL 想弹「解锁/恢复」类对话框时
+        // 经回调问按钮，我们一律答「否」（nRF52 APPROTECT 等场景只留日志不弹窗不误操作）
+        _setHook?.Invoke(HookCallback);
     }
 
     /// <summary>选择目标接口（JLINKARM_TIF_Select）。DLL 编码 JTAG=0/SWD=1；返回 false = 不支持。</summary>
@@ -295,12 +330,32 @@ internal sealed class JLinkNative
     /// <summary>写 RTT 下行通道。返回实写字节数（部分写是常态：目标不读则下行缓冲满返回 0），&lt;0 错误码。</summary>
     public unsafe int RttWrite(int bufferIndex, byte* buf, int len) => _rttWrite(bufferIndex, buf, len);
 
-    /// <summary>枚举 USB 探针 S/N（JLINKARM_EMU_GetList，HostIfs=USB）。返回探针数，&lt;=0 视为无。</summary>
-    public unsafe int EmuGetListUsb(Span<uint> sns)
+    /// <summary>枚举 USB 探针 S/N（JLINKARM_EMU_GetList，pylink connected_emulators 同款两步协议）。
+    /// **缓冲区语义**：该 API 填充的是 JLINK_EMU_CONNECT_INFO 结构体数组（pylink 实测 264 字节/项，
+    /// SerialNumber 在偏移 0）而非 uint 数组——v1.4.12 曾按 uint[32] 传入（128 字节），
+    /// DLL 按结构体写入 = 托管堆越界 → 数秒后 GC 在 coreclr 内访问违例 → 进程直接闪退无任何托管日志
+    /// （2026-10-07 开发机真 DLL 复现 + WER 事件日志定位：两次崩溃 coreclr.dll 同偏移 0x279913）。
+    /// 两步：先 (host, NULL, 0) 取数量，再按数量分配精确缓冲取结构体。</summary>
+    public unsafe List<uint> EnumUsbSerialNumbers(int maxItems = 16)
     {
-        fixed (uint* p = sns)
-            return _emuGetList(HostIfUsb, p, sns.Length);
+        var result = new List<uint>();
+        var count = _emuGetList(HostIfUsb, null, 0);
+        if (count <= 0)
+            return result;
+        var n = Math.Min(count, maxItems);
+        var buf = new byte[n * ConnectInfoSize];
+        int got;
+        fixed (byte* p = buf)
+            got = _emuGetList(HostIfUsb, (uint*)p, n);
+        if (got <= 0)
+            return result;
+        foreach (var sn in Enumerable.Range(0, Math.Min(got, n)).Select(i => BitConverter.ToUInt32(buf, i * ConnectInfoSize)))
+            result.Add(sn);
+        return result;
     }
+
+    /// <summary>JLINK_EMU_CONNECT_INFO 结构体大小（pylink JLinkConnectInfo 实测）。</summary>
+    private const int ConnectInfoSize = 264;
 
     private T Bind<T>(string exportName) where T : Delegate
     {
@@ -399,5 +454,9 @@ internal sealed class JLinkNative
     private unsafe delegate int DRttWrite(int bufferIndex, byte* buf, int len);
     private unsafe delegate int DEmuGetList(int hostIfs, uint* sns, int maxItems);
     private unsafe delegate void DLogCallback(byte* msg);
-    private unsafe delegate void DSetHookUnsecureDialog(DLogCallback hook);
+    // JLINKARM_SetErrorOutHandler / SetWarnOutHandler：void fn(const char*)，open 前注册
+    private unsafe delegate void DSetOutHandler(DLogCallback handler);
+    // J-Link unsecure 弹窗回调：int fn(const char* sTitle, const char* sMsg, U32 Flags)，返回按钮码
+    private unsafe delegate int DHookUnsecureDialog(byte* title, byte* msg, uint flags);
+    private unsafe delegate void DSetHookUnsecureDialog(DHookUnsecureDialog hook);
 }

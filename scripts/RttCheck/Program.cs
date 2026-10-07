@@ -44,11 +44,12 @@ catch (Exception ex)
         "未装 J-Link 软件时给出含安装指引的友好失败");
 }
 
-// ---- 2. 弹窗抑制接线（hook 已于加载时装载；后续用例全程无原生弹窗卡死即隐含验证）----
+// ---- 2. ExecCommand 通路（加载期已无任何 DLL 交互——hook 改到 Open 后装、签名三参 int 返回；
+//         v1.4.12 单参 void 签名 = DLL 读垃圾按钮码 → 原生崩溃闪退，2026-10-07 真机根因）----
 if (jlink is not null)
 {
     var ret = jlink.ExecCommand("HideDeviceSelectionDialog = 1");
-    Check(ret >= 0, $"弹窗抑制接线（HideDeviceSelectionDialog ret={ret}）");
+    Check(ret >= 0, $"ExecCommand 通路（HideDeviceSelectionDialog ret={ret}）");
 }
 
 // ---- 3. Scan 无害性（未装软件/无探针 → 空列表不抛）----
