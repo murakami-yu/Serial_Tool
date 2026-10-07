@@ -44,7 +44,7 @@
                 <!-- 纯 TextBox（可编辑 ComboBox 内部编辑框受全局样式影响不渲染文本，真机+开发机双实证）。
                      常用型号提示放 ToolTip，自动回填由上次使用记忆完成（RTT-T 同款体验） -->
                 <TextBox x:Name="DeviceBox" VerticalAlignment="Center" MinWidth="160"
-                         ToolTip="J-Link 器件名，须与目标芯片一致。常用：STM32F103C8、STM32F407VG、nRF52840_xxAA、nRF52832_xxAA、GD32F103C8、CH32F103C8（上次使用的型号会自动带出）"/>
+                         ToolTip="J-Link 器件名。小众/国产芯片（如国民技术 N32WB031）不在 J-Link 器件库属正常，选用近似型号即可——实测 N32WB031 配 nRF52840_xxAA 正常 RTT。常用：nRF52840_xxAA、nRF52832_xxAA、STM32F103C8、STM32F407VG、GD32F103C8、CH32F103C8"/>
             </DockPanel>
 
             <TextBlock Grid.Row="2" Grid.Column="0" Text="探针 S/N" VerticalAlignment="Center"

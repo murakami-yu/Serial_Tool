@@ -165,7 +165,9 @@ internal sealed class JLinkNative
         }
     }
 
-    /// <summary>定位并加载 DLL（已加载直接返回）。未安装时抛 <see cref="DllNotFoundException"/>（消息可直接展示给用户）。</summary>
+    /// <summary>定位并加载 DLL（已加载直接返回）。未安装时抛 <see cref="DllNotFoundException"/>（消息可直接展示给用户）。
+    /// 多候选逐个尝试：32 位 DLL（如 RTT-T 自带的 JLinkARM.dll）与本 64 位程序不兼容（BadImageFormatException），
+    /// 跳过并继续找 64 位候选，全部失败给出综合原因。</summary>
     public static JLinkNative EnsureLoaded()
     {
         var inst = _instance;
@@ -173,13 +175,29 @@ internal sealed class JLinkNative
         lock (InstanceLock)
         {
             if (_instance is not null) return _instance;
-            var path = LocateDll()
-                ?? throw new DllNotFoundException(
-                    "未找到 SEGGER J-Link 软件（JLink_x64.dll）。已尝试：本程序目录（JLink_x64.dll / JLinkARM.dll）、" +
-                    "注册表 HKLM/HKCU\\SOFTWARE\\SEGGER\\J-Link、环境变量 SEGGER_JLINK_ROOT_PATH、Program Files\\SEGGER\\JLink*。" +
-                    "解决办法：把 JLink_x64.dll 直接复制到本程序目录（与 RTT-T 工具同模式），或从 SEGGER 官网安装免费的 J-Link 软件后重试。");
-            _instance = new JLinkNative(path);
-            return _instance;
+            var failures = new List<string>();
+            foreach (var path in LocateDllCandidates())
+            {
+                try
+                {
+                    _instance = new JLinkNative(path);
+                    return _instance;
+                }
+                catch (BadImageFormatException)
+                {
+                    failures.Add($"{path}：32 位 DLL 与本 64 位程序不兼容（需 JLink_x64.dll）");
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{path}：{ex.Message}");
+                }
+            }
+            throw new DllNotFoundException(
+                "未找到可用的 SEGGER J-Link DLL（JLink_x64.dll）。已尝试：本程序目录、注册表 HKLM/HKCU\\SOFTWARE\\SEGGER\\J-Link、" +
+                "环境变量 SEGGER_JLINK_ROOT_PATH、Program Files\\SEGGER\\JLink*。" +
+                (failures.Count > 0 ? "候选失败原因：" + string.Join("；", failures) + "。" : "") +
+                "解决办法：安装 SEGGER J-Link 软件，或把 64 位的 JLink_x64.dll 复制到本程序目录" +
+                "（注意：RTT-T 工具自带的 JLinkARM.dll 是 32 位的，本程序用不了）。");
         }
     }
 
@@ -369,16 +387,19 @@ internal sealed class JLinkNative
         catch (EntryPointNotFoundException) { return null; }
     }
 
-    /// <summary>DLL 定位链（优先级即顺序）：
-    /// 程序目录（RTT-T 自带 DLL 同模式，用户可自行放置）→ 注册表 HKLM/HKCU（含 32 位视图）→
-    /// 环境变量 SEGGER_JLINK_ROOT_PATH → Program Files / Program Files (x86) / 本地用户 Programs 下 SEGGER\JLink*。</summary>
-    private static string? LocateDll()
+    /// <summary>DLL 定位链（优先级即顺序，收集全部候选供 EnsureLoaded 逐个尝试）：
+    /// 程序目录（用户可自行放置；注意 RTT-T 自带的 JLinkARM.dll 是 32 位的加载会被跳过）→
+    /// 注册表 HKLM/HKCU（含 32 位视图）→ 环境变量 SEGGER_JLINK_ROOT_PATH →
+    /// Program Files / Program Files (x86) / 本地用户 Programs 下 SEGGER\JLink*。</summary>
+    private static List<string> LocateDllCandidates()
     {
+        var candidates = new List<string>();
+
         // 0. 程序目录：把 DLL 放在 exe 旁边即生效（无需安装 J-Link 软件）
         foreach (var name in new[] { DllName, DllNameAlt })
         {
             var p = Path.Combine(AppContext.BaseDirectory, name);
-            if (File.Exists(p)) return p;
+            if (File.Exists(p)) candidates.Add(p);
         }
 
         // 1. 注册表 InstallPath（64 位装 HKLM\SOFTWARE\SEGGER\J-Link；老版本/32 位装 WOW6432Node 或 HKCU）
@@ -392,9 +413,9 @@ internal sealed class JLinkNative
                 if (key?.GetValue("InstallPath") is string dir)
                 {
                     var p = Path.Combine(dir, DllName);
-                    if (File.Exists(p)) return p;
+                    if (File.Exists(p)) candidates.Add(p);
                     p = Path.Combine(dir, DllNameAlt);
-                    if (File.Exists(p)) return p;
+                    if (File.Exists(p)) candidates.Add(p);
                 }
             }
             catch
@@ -408,9 +429,9 @@ internal sealed class JLinkNative
         if (!string.IsNullOrEmpty(env))
         {
             var p = Path.Combine(env, DllName);
-            if (File.Exists(p)) return p;
+            if (File.Exists(p)) candidates.Add(p);
             p = Path.Combine(env, DllNameAlt);
-            if (File.Exists(p)) return p;
+            if (File.Exists(p)) candidates.Add(p);
         }
 
         // 3. 常见安装目录通配（JLink、JLink_V794x 等目录名，倒序取最新版本）
@@ -424,12 +445,12 @@ internal sealed class JLinkNative
         {
             var segger = Path.Combine(root, "SEGGER");
             if (!Directory.Exists(segger)) continue;
-            var hit = Directory.GetDirectories(segger, "JLink*")
+            foreach (var hit in Directory.GetDirectories(segger, "JLink*")
                 .SelectMany(d => new[] { Path.Combine(d, DllName), Path.Combine(d, DllNameAlt) })
-                .FirstOrDefault(File.Exists);
-            if (hit is not null) return hit;
+                .Where(File.Exists))
+                candidates.Add(hit);
         }
-        return null;
+        return candidates;
     }
 
     // ---------- 委托声明（cdecl；x64 单一调用约定，与 stdcall 声明无差别） ----------

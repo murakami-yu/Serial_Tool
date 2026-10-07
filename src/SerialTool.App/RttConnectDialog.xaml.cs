@@ -24,7 +24,7 @@ public partial class RttConnectDialog : Window
         _last = Services.RttLastUsedStore.Load();
         IfaceBox.SelectedIndex = _last?.Iface is 0 or 1 ? _last.Iface : 0;
         SpeedBox.Text = (_last?.SpeedKhz ?? 4000).ToString();
-        DeviceBox.Text = string.IsNullOrWhiteSpace(_last?.Device) ? "STM32F103C8" : _last.Device;
+        DeviceBox.Text = string.IsNullOrWhiteSpace(_last?.Device) ? DefaultDevice : _last.Device;
         ChannelBox.SelectedIndex = _last is { Channel: >= 0 and <= 3 } lu ? lu.Channel : 0;
         ResetBox.IsChecked = _last?.Reset ?? true;
         Loaded += (_, _) => DetectProbes();
@@ -32,6 +32,10 @@ public partial class RttConnectDialog : Window
 
     private readonly Services.RttLastUsed? _last;
     private bool _prefilled; // 已保存会话预填过 → 探针检测不再覆盖器件名
+
+    /// <summary>默认器件：项目实测配置——N32WB031（国民技术 Cortex-M0）不在 J-Link 器件库，
+    /// 近似型号 nRF52840_xxAA 实测可正常连接+RTT（RTT-T 同款选择）。</summary>
+    private const string DefaultDevice = "nRF52840_xxAA";
 
     /// <summary>按已保存会话预填（快速连接）。Notes 编码 RTT 附加参数："sn=xxx;reset=1"。</summary>
     public void Prefill(Services.SavedSession s)
@@ -69,7 +73,7 @@ public partial class RttConnectDialog : Window
             if (_last is { } lu && !string.IsNullOrWhiteSpace(lu.Device) && lu.Sn == sn)
                 DeviceBox.Text = lu.Device;                       // 同一探针 → 带出该板芯片
             else if (_last is { Sn: not "" } && _last.Sn != sn)
-                DeviceBox.Text = "STM32F103C8";                   // 换了探针（=换板子）→ 回默认，不串配置
+                DeviceBox.Text = DefaultDevice;                         // 换了探针（=换板子）→ 回默认，不串配置
         }
 
         var names = string.Join("、", probes.Select(p => p.DisplayName));
@@ -87,7 +91,7 @@ public partial class RttConnectDialog : Window
     private void OnConnect(object sender, RoutedEventArgs e)
     {
         var device = DeviceBox.Text.Trim();
-        if (device.Length == 0) { ShowErr("请输入 J-Link 器件名（如 STM32F103C8）"); return; }
+        if (device.Length == 0) { ShowErr("请输入 J-Link 器件名（小众芯片可用近似型号，见输入框提示）"); return; }
         if (!device.All(c => c < 128)) { ShowErr("器件名须为 ASCII"); return; }
 
         if (!int.TryParse(SpeedBox.Text.Trim(), out var speed) || speed is < 1000 or > 50000)

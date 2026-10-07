@@ -106,8 +106,12 @@ public sealed class RttBackend : IRttBackend
                     throw new InvalidOperationException($"设置调试接口失败（{(cfg.Interface == 1 ? "JTAG" : "SWD")} 不受探针/目标支持）");
                 jlink.SetSpeed(cfg.SpeedKhz);
 
+                // 器件名校验（软警告）：小众/国产芯片（如国民技术 N32WB031）不在 J-Link 器件库属常态，
+                // 错配近似器件照样能连+RTT（用户 RTT-T 实测：N32WB031 配 nRF52840_xxAA 正常工作）——
+                // 不拦截，仅留痕；真连不上时 DLL 会给出真实错误。
                 if (jlink.DeviceSupported(cfg.Device) == false)
-                    throw new InvalidOperationException($"未知或不受支持的器件名 {cfg.Device}（须与目标芯片一致，如 STM32F103C8 / nRF52840_xxAA）");
+                    JLinkLog?.Invoke($"器件名 {cfg.Device} 不在 J-Link 器件库，仍将尝试连接" +
+                                     "（小众芯片可选用近似型号，如 nRF52840_xxAA / STM32F103C8）");
                 Exec(jlink, $"Device = {cfg.Device}", $"器件名 {cfg.Device} 设置失败");
 
                 if (!jlink.IsConnected())
