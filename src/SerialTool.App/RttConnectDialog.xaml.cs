@@ -18,6 +18,17 @@ public partial class RttConnectDialog : Window
     public RttConnectDialog()
     {
         InitializeComponent();
+        // 默认值 + 上次使用记忆（RTT-T config.json 同款「自动选择」）：代码显式赋值——
+        // IsEditable ComboBox 依赖 XAML IsSelected/Text 会在部分系统清空编辑框（真机截图实证），代码赋值才可靠
+        var last = Services.RttLastUsedStore.Load();
+        IfaceBox.SelectedIndex = last?.Iface is 0 or 1 ? last.Iface : 0;
+        SpeedBox.Text = (last?.SpeedKhz ?? 4000).ToString();
+        if (!string.IsNullOrWhiteSpace(last?.Device))
+            DeviceBox.Text = last.Device;
+        else
+            DeviceBox.SelectedIndex = 0; // 无记忆时默认选第一个常用器件（RTT-T 默认选中首项同款）
+        ChannelBox.SelectedIndex = last is { Channel: >= 0 and <= 3 } lu ? lu.Channel : 0;
+        ResetBox.IsChecked = last?.Reset ?? true;
         Loaded += (_, _) => DetectProbes();
     }
 
@@ -92,6 +103,10 @@ public partial class RttConnectDialog : Window
             string.IsNullOrWhiteSpace(NameBox.Text) ? null : NameBox.Text.Trim(),
             device, speed, IfaceBox.SelectedIndex, ChannelBox.SelectedIndex,
             addr, SaveBox.IsChecked == true, sn, ResetBox.IsChecked != false);
+        // 记忆本次参数（RTT-T config.json 同款），下次打开自动回填
+        Services.RttLastUsedStore.Save(
+            new Services.RttLastUsed(device, speed, IfaceBox.SelectedIndex, ChannelBox.SelectedIndex,
+                ResetBox.IsChecked != false));
         DialogResult = true;
     }
 

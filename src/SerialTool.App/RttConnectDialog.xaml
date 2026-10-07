@@ -38,11 +38,20 @@
             <DockPanel Grid.Row="1" Grid.Column="1" Margin="12,4,0,4">
                 <ComboBox x:Name="IfaceBox" DockPanel.Dock="Right" Width="70" VerticalAlignment="Center"
                           ToolTip="调试接口（目标板 SWD/JTAG 接线需一致）">
-                    <ComboBoxItem Content="SWD" IsSelected="True"/>
+                    <ComboBoxItem Content="SWD"/>
                     <ComboBoxItem Content="JTAG"/>
                 </ComboBox>
-                <TextBox x:Name="DeviceBox" VerticalAlignment="Center" MinWidth="160"
-                         ToolTip="J-Link 器件名，如 STM32F103C8 / nRF52840_xxAA / STM32F407VG（须与目标芯片一致）"/>
+                <!-- IsEditable + 常用器件下拉（RTT-T config 器件表同款）：可选可输，记忆上次使用 -->
+                <ComboBox x:Name="DeviceBox" IsEditable="True" VerticalAlignment="Center" MinWidth="160"
+                          ToolTip="J-Link 器件名，须与目标芯片一致（可下拉选常用型号或直接输入）">
+                    <ComboBoxItem Content="STM32F103C8"/>
+                    <ComboBoxItem Content="STM32F407VG"/>
+                    <ComboBoxItem Content="nRF52840_xxAA"/>
+                    <ComboBoxItem Content="nRF52832_xxAA"/>
+                    <ComboBoxItem Content="nRF52832_xxAB"/>
+                    <ComboBoxItem Content="GD32F103C8"/>
+                    <ComboBoxItem Content="CH32F103C8"/>
+                </ComboBox>
             </DockPanel>
 
             <TextBlock Grid.Row="2" Grid.Column="0" Text="探针 S/N" VerticalAlignment="Center"
@@ -65,11 +74,10 @@
                     </ComboBox>
                 </StackPanel>
                 <ComboBox x:Name="SpeedBox" IsEditable="True" Width="86" VerticalAlignment="Center"
-                          Text="4000"
                           ToolTip="接口速度 kHz（J-Link 自动协商到可行值）">
                     <ComboBoxItem Content="1000"/>
                     <ComboBoxItem Content="2000"/>
-                    <ComboBoxItem Content="4000" IsSelected="True"/>
+                    <ComboBoxItem Content="4000"/>
                     <ComboBoxItem Content="8000"/>
                     <ComboBoxItem Content="12000"/>
                 </ComboBox>

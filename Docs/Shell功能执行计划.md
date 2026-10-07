@@ -1,191 +1,93 @@
-# Shell 功能执行计划：终端仿真 / SSH / 多会话（Xshell/MobaXterm 方向）
+﻿# Shell 鍔熻兘鎵ц璁″垝锛氱粓绔豢鐪?/ SSH / 澶氫細璇濓紙Xshell/MobaXterm 鏂瑰悜锛?
+> 鎵规浠ｅ彿锛?*V1.4**锛堢粓绔?Shell 鍔熻兘绾匡紝涓?V1.3銆屽彂閫佸巻鍙?鐑彃鎷斻€嶅苟琛屼笉鍐茬獊锛?> 鏃ユ湡锛?026-09-19 锝?鐘舵€侊細**璁″垝涓讳綋瀹屾垚锛歁0-M4锛圱elnet + 鏈湴缁堢锛夊叏閮ㄥ疄鐜帮紙107 鍗曟祴鍏ㄧ豢锛夛紱M2 SSH 宸蹭簬 2026-09-29 WSL 鐪熸満楠屾敹閫氳繃锛堥獙鏀跺墠淇 SSH.NET 2026 鍥涚己闄凤紝瑙?搂4锛夛紱M1 鍥炵幆/M3 澶氫細璇?M4 浜哄伐楠屾敹娓呭崟鍦?搂3.3/搂5.3/搂6.1锛汼FTP 涓庣鍙ｈ浆鍙戞寜銆屽彲閫夋寜闇€銆嶅緟闇€姹傜‘璁ゅ悗鐙珛鎵规**
+> 鍏宠仈锛歔Serial_Tool_Design.md](Serial_Tool_Design.md) 锝?[README 璺嚎鍥綸(../README.md) 锝?[鍔熻兘澧炲己鎵ц璁″垝](鍔熻兘澧炲己鎵ц璁″垝.md)
 
-> 批次代号：**V1.4**（终端/Shell 功能线，与 V1.3「发送历史/热插拔」并行不冲突）
-> 日期：2026-09-19 ｜ 状态：**计划主体完成：M0-M4（Telnet + 本地终端）全部实现（107 单测全绿）；M2 SSH 已于 2026-09-29 WSL 真机验收通过（验收前修复 SSH.NET 2026 四缺陷，见 §4）；M1 回环/M3 多会话/M4 人工验收清单在 §3.3/§5.3/§6.1；SFTP 与端口转发按「可选按需」待需求确认后独立批次**
-> 关联：[Serial_Tool_Design.md](Serial_Tool_Design.md) ｜ [README 路线图](../README.md) ｜ [功能增强执行计划](功能增强执行计划.md)
+## 0. 瀹屾垚搴﹁窡韪紙姣忓畬鎴愪竴涓樁娈垫洿鏂版琛級
 
-## 0. 完成度跟踪（每完成一个阶段更新此表）
-
-| 里程碑 | flag（验收即达成） | 状态 | 完成日期 |
+| 閲岀▼纰?| flag锛堥獙鏀跺嵆杈炬垚锛?| 鐘舵€?| 瀹屾垚鏃ユ湡 |
 | --- | --- | --- | --- |
-| M0 地基 | 计划文档落定 + 依赖选型验证通过（XTerm.NET 2.0.2 API 冒烟） | ✅ 完成 | 2026-09-18 |
-| M1 串口终端 | 连上串口设备 → 终端窗渲染 VT 输出（颜色/清屏/光标/滚回）→ 键入即时回显交互 | ✅ 完成（代码+构建+冒烟；TCP 回环/真机项待人工确认） | 2026-09-18 |
-| M2 SSH 会话 | 连真实 Linux 主机交互 shell（密码/私钥、host key 首次确认、resize 通知） | ✅ 完成（2026-09-29 WSL sshd 真机验收通过：GUI 首连/TOFU/收发/resize/私钥/断开重连全链路；验收前修复四缺陷，见 §4） | 2026-09-29 |
-| M3 多会话 | 并发 N 个终端会话 + 标签页切换 + 保存的主机快速连接 | ✅ 代码完成（构建+98 单测+冒烟；多并发验收待人工） | 2026-09-19 |
-| M4 扩展（可选） | Telnet / 本地终端 ConPTY / RTT / SFTP，按需逐项启动 | ✅ Telnet + 本地终端完成（107 单测+ConPTY 实测回显/resize/销毁）；**RTT 完成（2026-09-30，本机负路径全链路实测，真机段待硬件——J-Link 探针+目标板不在开发机）**；SFTP/端口转发待需求确认 | 2026-09-19 |
+| M0 鍦板熀 | 璁″垝鏂囨。钀藉畾 + 渚濊禆閫夊瀷楠岃瘉閫氳繃锛圶Term.NET 2.0.2 API 鍐掔儫锛?| 鉁?瀹屾垚 | 2026-09-18 |
+| M1 涓插彛缁堢 | 杩炰笂涓插彛璁惧 鈫?缁堢绐楁覆鏌?VT 杈撳嚭锛堥鑹?娓呭睆/鍏夋爣/婊氬洖锛夆啋 閿叆鍗虫椂鍥炴樉浜や簰 | 鉁?瀹屾垚锛堜唬鐮?鏋勫缓+鍐掔儫锛汿CP 鍥炵幆/鐪熸満椤瑰緟浜哄伐纭锛?| 2026-09-18 |
+| M2 SSH 浼氳瘽 | 杩炵湡瀹?Linux 涓绘満浜や簰 shell锛堝瘑鐮?绉侀挜銆乭ost key 棣栨纭銆乺esize 閫氱煡锛?| 鉁?瀹屾垚锛?026-09-29 WSL sshd 鐪熸満楠屾敹閫氳繃锛欸UI 棣栬繛/TOFU/鏀跺彂/resize/绉侀挜/鏂紑閲嶈繛鍏ㄩ摼璺紱楠屾敹鍓嶄慨澶嶅洓缂洪櫡锛岃 搂4锛?| 2026-09-29 |
+| M3 澶氫細璇?| 骞跺彂 N 涓粓绔細璇?+ 鏍囩椤靛垏鎹?+ 淇濆瓨鐨勪富鏈哄揩閫熻繛鎺?| 鉁?浠ｇ爜瀹屾垚锛堟瀯寤?98 鍗曟祴+鍐掔儫锛涘骞跺彂楠屾敹寰呬汉宸ワ級 | 2026-09-19 |
+| M4 鎵╁睍锛堝彲閫夛級 | Telnet / 鏈湴缁堢 ConPTY / RTT / SFTP锛屾寜闇€閫愰」鍚姩 | 鉁?Telnet + 鏈湴缁堢瀹屾垚锛?07 鍗曟祴+ConPTY 瀹炴祴鍥炴樉/resize/閿€姣侊級锛?*RTT 瀹屾垚锛?026-09-30锛屾湰鏈鸿礋璺緞鍏ㄩ摼璺疄娴嬶紝鐪熸満娈靛緟纭欢鈥斺€擩-Link 鎺㈤拡+鐩爣鏉夸笉鍦ㄥ紑鍙戞満锛?*锛汼FTP/绔彛杞彂寰呴渶姹傜‘璁?| 2026-09-19 |
 
-## 1. 背景与选型（已定稿）
-
-目标：为串口调试工具新增 Xshell/MobaXterm 式终端能力。约束：**不使用 WebView，打包 exe 保持零外部运行时依赖（自包含单文件）**。
-
-| 层 | 选型 | 理由 | 外部依赖 |
+## 1. 鑳屾櫙涓庨€夊瀷锛堝凡瀹氱锛?
+鐩爣锛氫负涓插彛璋冭瘯宸ュ叿鏂板 Xshell/MobaXterm 寮忕粓绔兘鍔涖€傜害鏉燂細**涓嶄娇鐢?WebView锛屾墦鍖?exe 淇濇寔闆跺閮ㄨ繍琛屾椂渚濊禆锛堣嚜鍖呭惈鍗曟枃浠讹級**銆?
+| 灞?| 閫夊瀷 | 鐞嗙敱 | 澶栭儴渚濊禆 |
 | --- | --- | --- | --- |
-| 终端仿真引擎 | **XTerm.NET 2.0.2**（NuGet，MIT，net10.0，零包依赖，纯托管单 DLL） | xterm.js 的 .NET 移植：VT100/ANSI 全量、256 色+RGB、CJK 宽字符/字素簇、主备缓冲+滚回、键盘/鼠标输入编码、Sixel/Kitty 图形；headless 设计自带渲染器 | 无（单文件发布内嵌） |
-| 终端渲染 | **自写 WPF 控件 `TerminalView`** | 引擎无 UI 依赖，渲染层自己写（~千行）是本功能主要工作量；一次投入四处复用（串口/SSH/Telnet/本地终端） | 无 |
-| SSH 协议 | **SSH.NET 2026.0.0**（NuGet，MIT，纯托管） | 密码/私钥认证、shell 通道+PTY resize、SFTP、端口转发；社区标准库 | 无（单文件发布内嵌） |
-| 本地终端（M4） | ConPTY（Win10 1809+ 系统 API，P/Invoke） | OS 自带，无附带二进制 | 无（OS API） |
+| 缁堢浠跨湡寮曟搸 | **XTerm.NET 2.0.2**锛圢uGet锛孧IT锛宯et10.0锛岄浂鍖呬緷璧栵紝绾墭绠″崟 DLL锛?| xterm.js 鐨?.NET 绉绘锛歏T100/ANSI 鍏ㄩ噺銆?56 鑹?RGB銆丆JK 瀹藉瓧绗?瀛楃礌绨囥€佷富澶囩紦鍐?婊氬洖銆侀敭鐩?榧犳爣杈撳叆缂栫爜銆丼ixel/Kitty 鍥惧舰锛沨eadless 璁捐鑷甫娓叉煋鍣?| 鏃狅紙鍗曟枃浠跺彂甯冨唴宓岋級 |
+| 缁堢娓叉煋 | **鑷啓 WPF 鎺т欢 `TerminalView`** | 寮曟搸鏃?UI 渚濊禆锛屾覆鏌撳眰鑷繁鍐欙紙~鍗冭锛夋槸鏈姛鑳戒富瑕佸伐浣滈噺锛涗竴娆℃姇鍏ュ洓澶勫鐢紙涓插彛/SSH/Telnet/鏈湴缁堢锛?| 鏃?|
+| SSH 鍗忚 | **SSH.NET 2026.0.0**锛圢uGet锛孧IT锛岀函鎵樼锛?| 瀵嗙爜/绉侀挜璁よ瘉銆乻hell 閫氶亾+PTY resize銆丼FTP銆佺鍙ｈ浆鍙戯紱绀惧尯鏍囧噯搴?| 鏃狅紙鍗曟枃浠跺彂甯冨唴宓岋級 |
+| 鏈湴缁堢锛圡4锛?| ConPTY锛圵in10 1809+ 绯荤粺 API锛孭/Invoke锛?| OS 鑷甫锛屾棤闄勫甫浜岃繘鍒?| 鏃狅紙OS API锛?|
 
-备选记录：XtermSharp（migueldeicaza）缺滚回/reflow，弃用；WebView2 + xterm.js 方案被「零外部依赖」约束否决。
-
-## 2. 架构基线（所有阶段共同遵守）
+澶囬€夎褰曪細XtermSharp锛坢igueldeicaza锛夌己婊氬洖/reflow锛屽純鐢紱WebView2 + xterm.js 鏂规琚€岄浂澶栭儴渚濊禆銆嶇害鏉熷惁鍐炽€?
+## 2. 鏋舵瀯鍩虹嚎锛堟墍鏈夐樁娈靛叡鍚岄伒瀹堬級
 
 ```
-                          ┌─ SerialBackend ──┐
-IBusBackend._active ──────┼─ TcpBackend      │   现有：RX → ConcurrentQueue → FlushRx → RichTextBox
-                          └─ SshBackend(M2新)┘   新增旁路：RX 原始字节 → TerminalView 字节泵 → XTerm.NET 引擎 → 自绘渲染
-                                                     输入：KeyDown/IME → GenerateKeyInput/CharInput → 字节 → _active.Write
+                          鈹屸攢 SerialBackend 鈹€鈹€鈹?IBusBackend._active 鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢 TcpBackend      鈹?  鐜版湁锛歊X 鈫?ConcurrentQueue 鈫?FlushRx 鈫?RichTextBox
+                          鈹斺攢 SshBackend(M2鏂?鈹?  鏂板鏃佽矾锛歊X 鍘熷瀛楄妭 鈫?TerminalView 瀛楄妭娉?鈫?XTerm.NET 寮曟搸 鈫?鑷粯娓叉煋
+                                                     杈撳叆锛欿eyDown/IME 鈫?GenerateKeyInput/CharInput 鈫?瀛楄妭 鈫?_active.Write
 ```
 
-- **旁路不改主链**：终端是接收区的**附加视图**（同一字节流，两处消费）；`RawRxTap` 事件在读取线程抛出，TerminalView 用 `ConcurrentQueue` + UI 定时器（~16ms）泵给引擎，**引擎实例只在 UI 线程触碰**（线程模型干净，无锁）。
-- **发送旁路**：终端键入走 `SendRawBytes()`（计数/波形与主发送一致，但不进接收区行缓冲、不写会话日志——远端回显已覆盖且避免每键一行刷屏）。
-- **窗口生命周期**：照抄 ChartWindow 模式（打开=新建独立窗、X=销毁、位置尺寸记忆、主窗 Closing 前先真关）。两窗 2026-09-26 起不设 Owner（从属窗口被绑进主窗激活组，开窗/激活会强制带出主窗），主窗入口为按钮（见 §6 2026-09-26 记录）。
-- **持久化套路**：`Config/ui_settings.json` 加键（ShowTerminalPanel/终端字体字号），`Config/known_hosts.json`（M2），照抄现有 `Load*/Save*` 模式。
-- **测试边界**：纯逻辑（已知主机指纹解析、字节度量）进 xUnit；渲染/交互走构建 + 人工冒烟清单。
+- **鏃佽矾涓嶆敼涓婚摼**锛氱粓绔槸鎺ユ敹鍖虹殑**闄勫姞瑙嗗浘**锛堝悓涓€瀛楄妭娴侊紝涓ゅ娑堣垂锛夛紱`RawRxTap` 浜嬩欢鍦ㄨ鍙栫嚎绋嬫姏鍑猴紝TerminalView 鐢?`ConcurrentQueue` + UI 瀹氭椂鍣紙~16ms锛夋车缁欏紩鎿庯紝**寮曟搸瀹炰緥鍙湪 UI 绾跨▼瑙︾**锛堢嚎绋嬫ā鍨嬪共鍑€锛屾棤閿侊級銆?- **鍙戦€佹梺璺?*锛氱粓绔敭鍏ヨ蛋 `SendRawBytes()`锛堣鏁?娉㈠舰涓庝富鍙戦€佷竴鑷达紝浣嗕笉杩涙帴鏀跺尯琛岀紦鍐层€佷笉鍐欎細璇濇棩蹇椻€斺€旇繙绔洖鏄惧凡瑕嗙洊涓旈伩鍏嶆瘡閿竴琛屽埛灞忥級銆?- **绐楀彛鐢熷懡鍛ㄦ湡**锛氱収鎶?ChartWindow 妯″紡锛堟墦寮€=鏂板缓鐙珛绐椼€乆=閿€姣併€佷綅缃昂瀵歌蹇嗐€佷富绐?Closing 鍓嶅厛鐪熷叧锛夈€備袱绐?2026-09-26 璧蜂笉璁?Owner锛堜粠灞炵獥鍙ｈ缁戣繘涓荤獥婵€娲荤粍锛屽紑绐?婵€娲讳細寮哄埗甯﹀嚭涓荤獥锛夛紝涓荤獥鍏ュ彛涓烘寜閽紙瑙?搂6 2026-09-26 璁板綍锛夈€?- **鎸佷箙鍖栧璺?*锛歚Config/ui_settings.json` 鍔犻敭锛圫howTerminalPanel/缁堢瀛椾綋瀛楀彿锛夛紝`Config/known_hosts.json`锛圡2锛夛紝鐓ф妱鐜版湁 `Load*/Save*` 妯″紡銆?- **娴嬭瘯杈圭晫**锛氱函閫昏緫锛堝凡鐭ヤ富鏈烘寚绾硅В鏋愩€佸瓧鑺傚害閲忥級杩?xUnit锛涙覆鏌?浜や簰璧版瀯寤?+ 浜哄伐鍐掔儫娓呭崟銆?
+## 3. M1锛歐PF 缁堢鎺т欢 + 涓插彛 VT 妯″紡 鉁?
+**瀹炵幇璁板綍锛?026-09-18锛?*锛氭柊澧?`Controls/TerminalView.cs`锛堣嚜缁樻覆鏌撴帶浠讹紝~600 琛岋級+ `TerminalWindow.xaml(.cs)`锛堢嫭绔嬬獥锛屽浘琛ㄧ獥鍚屾閿€姣?閲嶅缓妯″紡 + 婊氬洖婊氬姩鏉?+ 鏈繛鎺ラ伄缃╋級锛沗MainViewModel` 澧?`RawRxTap`锛堣鍙栫嚎绋嬫梺璺級/`SendTerminalBytes`锛堢粓绔彂閫侀摼璺級/`ShowTerminalPanel`锛堟寔涔呭寲锛夛紱宸ュ叿鏉℃柊澧炪€岀粓绔€嶅嬀閫夐」銆傛瀯寤?0 閿欒銆?2 鍗曟祴鍏ㄧ豢銆侀厤缃紑鍚粓绔獥鍚姩 8 绉掑啋鐑熸棤宕╂簝銆?宸茬煡鍙栬垗锛氬弻鍑婚€夎瘝鏆傜己锛坄Control.OnMouseDoubleClick` 鍦?`FrameworkElement` 涓嶅彲鐢紝寰呰ˉ `ClickCount` 鏂规锛夛紱256 鑹蹭腑 16-255 鎸夋爣绉板€兼覆鏌擄紙OSC 鏀瑰啓璋冭壊鏉夸粎瀵?0-15 鐢熸晥锛夛紱绮樿创璧?`Terminal.Paste`锛堟嫭鍙风矘璐存ā寮忥級銆?
+### 3.1 鐩爣琛屼负
 
-## 3. M1：WPF 终端控件 + 串口 VT 模式 ✅
+- 宸ュ叿鏉°€岀粓绔€嶆寜閽紙涓庢椂搴忓浘骞跺垪锛?026-09-26 鐢卞嬀閫夋鏀规寜閽級鎵撳紑缁堢绐楀彛锛堢嫭绔嬬獥锛岄粯璁よ创涓荤獥鍙充晶锛涘凡寮€鍒欏甫鍒板墠鍙帮紝鍏抽棴璧扮獥鍙?X锛夈€?- 涓插彛/TCP 杩炴帴鍚庯紝缁堢绐楁妸 RX 瀛楄妭娴佹寜 VT100/xterm 瑙ｉ噴娓叉煋锛氶鑹层€佹竻灞忋€佸厜鏍囩Щ鍔ㄣ€乣htop`/`vim` 澶囧睆鍒囨崲銆?- 閿洏杈撳叆鍗虫椂缂栫爜鍙戝線瀵圭锛堝洖鏄剧敱瀵圭璐熻矗锛夛紱涓枃杈撳叆娉曞彲杈撳叆锛堢粡 `GenerateCharInput`锛夛紝IME 鍊欓€夋璺熼殢缁堢鍏夋爣锛?026-09-25 淇锛岃 搂6锛夈€?- 婊氬洖锛氶紶鏍囨粴杞?+ 婊氬姩鏉★紝婊氬埌搴曡嚜鍔ㄨ窡闅忥紱澶囧睆锛坴im 绛夛級鏃犳粴鍥炵紦鍐插尯鈥斺€斿簲鐢ㄥ紑榧犳爣璺熻釜鍒欐粴杞簨浠惰浆鍙戯紝鏈紑鍒欐ā鎷?Up/Down 閿彂缁欏簲鐢紙2026-09-25 淇锛岃 搂6锛夛紱Shift+婊氳疆寮哄埗缁堢鑷鐞嗭紙闈炲灞忔粴鍥?/ 澶囧睆妯℃嫙 PgUp/PgDn锛夈€?- 澶嶅埗绮樿创锛氭嫋閫?+ 鍙抽敭鑿滃崟锛堝鍒?绮樿创/娓呭睆/鍥炲埌搴曢儴锛夛紱`Ctrl+Shift+C/V` 涓?`Ctrl+V` 绮樿创锛沗Ctrl+C` 閬靛惊缁堢鎯緥鈥斺€?*鏈夐€夊尯鏃跺鍒讹紙澶嶅埗鍗虫竻閫夊尯锛屽榻?Windows Terminal锛夛紝鏃犻€夊尯鏃跺彂閫?`^C`锛圽x03锛変腑鏂绔?*锛涘簲鐢ㄥ紑榧犳爣璺熻釜鏃?**Shift+宸﹂敭寮哄埗鏂囧瓧閫夋嫨銆丼hift+鍙抽敭寮哄埗寮硅彍鍗?*锛?026-09-25 淇锛岃 搂6锛夈€?- 鏈繛鎺ユ椂鏄剧ず閬僵銆屾湭杩炴帴銆嶏紱杩炴帴鏂紑缁堢淇濈暀鍐呭锛堝彧璇伙級銆?
+### 3.2 璁捐瑕佺偣
 
-**实现记录（2026-09-18）**：新增 `Controls/TerminalView.cs`（自绘渲染控件，~600 行）+ `TerminalWindow.xaml(.cs)`（独立窗，图表窗同款销毁/重建模式 + 滚回滚动条 + 未连接遮罩）；`MainViewModel` 增 `RawRxTap`（读取线程旁路）/`SendTerminalBytes`（终端发送链路）/`ShowTerminalPanel`（持久化）；工具条新增「终端」勾选项。构建 0 错误、92 单测全绿、配置开启终端窗启动 8 秒冒烟无崩溃。
-已知取舍：双击选词暂缺（`Control.OnMouseDoubleClick` 在 `FrameworkElement` 不可用，待补 `ClickCount` 方案）；256 色中 16-255 按标称值渲染（OSC 改写调色板仅对 0-15 生效）；粘贴走 `Terminal.Paste`（括号粘贴模式）。
+**TerminalView**锛坄src/SerialTool.App/Controls/TerminalView.cs`锛岃嚜瀹氫箟 FrameworkElement锛夛細
 
-### 3.1 目标行为
+- 搴﹂噺锛氬瓧浣?`Cascadia Mono, SimSun` 澶嶅悎鏃忥紙2026-09-19 鐢ㄦ埛瀵规瘮鎴浘鍚庨€夊畾锛屾紨杩涜 搂6锛歍NR 姣斾緥瀛椾綋鏂规搴熷純锛夈€傛牸瀹?= max(Cascadia Mono 鏁板瓧 "0" 瀛楀鈮?.2 DIP, SimSun 鍏ㄨ/2=7)鈥斺€旂瓑瀹藉瓧浣撳崟瀛楃瀹藉嵆鏍煎锛屼腑鏂囦袱鏍?16.4 vs 瀛楀舰 14 鐣欑櫧浠?2.4锛涜楂?= max(涓ゅ瓧浣撹楂?脳1.08锛沗Resize` 鎸夎鍙ｅ昂瀵稿弽鎺ㄨ鍒楋紙涓嬮檺 80脳24 璧锋鎸夊唴瀹癸級銆?- 娓叉煋锛坄OnRender`锛夛細鑳屾櫙 鈫?閫愯鍚屽簳鑹茶繛缁牸鍚堝苟涓轰竴涓煩褰紱鏂囧瓧**閫愭牸**缁樺埗锛堜负姣斾緥瀛椾綋鍏煎鎬ц璁♀€斺€斿瓧瀹解墵鏍煎鏃跺悎骞?run 浼氭紓绉伙紱绛夊瀛椾綋涓嬬粨鏋滀笌鍚堝苟绛変环锛夛紝`FormattedText` 鎸?(鏂囨湰,绮?鏂?鍓嶆櫙鑹? 缂撳瓨銆丏PI 鍙樺寲娓呯┖锛涜秴鏍煎瀛楃姘村钩鍘嬬缉鍏滃簳 鈫?鍏夋爣锛堝潡/闂?530ms锛夆啋 閫夊尯楂樹寒銆傚彧鐢昏鍙ｈ锛坄Lines[YDisp + row]`锛夛紝`Width==0` 缁牸璺宠繃銆?- 瀛楄妭娉碉細`ConcurrentQueue<byte[]>`锛堜换鎰忕嚎绋嬫姇閫掞級+ `DispatcherTimer 16ms` 鍑洪槦 `terminal.Write` + 鍚堝抚澶辨晥锛堣緭鍑洪珮宄版瘡甯ф渶澶氫竴娆″叏瑙嗗彛閲嶇粯锛夈€?- 杈撳叆锛歚KeyDown` 鈫?`GenerateKeyInput`锛堣繑鍥炲瓧鑺傚簭鍒楋級鈫?`InputEmitted` 浜嬩欢锛沗TextInput`锛圛ME锛夆啋 `GenerateCharInput`锛涚矘璐存枃鏈€愬瓧鑺傚啓鍏ャ€?- 寮曟搸鍥炶瘽锛坄DataReceived` 浜嬩欢锛屽 DA 搴旂瓟/DSR 鍏夋爣鎶ュ憡锛夆啋 鍚屾牱璧?`InputEmitted` 鍙戝绔€?- 婊氬洖锛氳嚜缁存姢瑙嗗彛鍋忕Щ锛堣窡闅忓簳閮? `Lines.Count - Rows`锛夛紝婊氳疆姝ヨ繘 3 琛岋紱`BufferChanged` 澶囧睆鏃堕挸鍒板簳銆?
+**鎺ョ嚎**锛坄MainViewModel` / `MainWindow`锛夛細
 
-- 工具条「终端」按钮（与时序图并列；2026-09-26 由勾选框改按钮）打开终端窗口（独立窗，默认贴主窗右侧；已开则带到前台，关闭走窗口 X）。
-- 串口/TCP 连接后，终端窗把 RX 字节流按 VT100/xterm 解释渲染：颜色、清屏、光标移动、`htop`/`vim` 备屏切换。
-- 键盘输入即时编码发往对端（回显由对端负责）；中文输入法可输入（经 `GenerateCharInput`），IME 候选框跟随终端光标（2026-09-25 修订，见 §6）。
-- 滚回：鼠标滚轮 + 滚动条，滚到底自动跟随；备屏（vim 等）无滚回缓冲区——应用开鼠标跟踪则滚轮事件转发，未开则模拟 Up/Down 键发给应用（2026-09-25 修订，见 §6）；Shift+滚轮强制终端自处理（非备屏滚回 / 备屏模拟 PgUp/PgDn）。
-- 复制粘贴：拖选 + 右键菜单（复制/粘贴/清屏/回到底部）；`Ctrl+Shift+C/V` 与 `Ctrl+V` 粘贴；`Ctrl+C` 遵循终端惯例——**有选区时复制（复制即清选区，对齐 Windows Terminal），无选区时发送 `^C`（\x03）中断对端**；应用开鼠标跟踪时 **Shift+左键强制文字选择、Shift+右键强制弹菜单**（2026-09-25 修订，见 §6）。
-- 未连接时显示遮罩「未连接」；连接断开终端保留内容（只读）。
+- `[ObservableProperty] ShowTerminalPanel`锛堟寔涔呭寲锛夛紱`RawRxTap` 浜嬩欢锛坄OnDataReceived` 鍐呭師鏍锋姏瀛楄妭锛岃绾跨▼锛夛紱`SendRawBytes()`锛堝鐢ㄧ幇鏈?TX 璁℃暟涓庢尝褰㈣烦鍙橈紝璺宠繃 `_lines`/鏃ュ織锛夈€?- MainWindow 鎸?`_terminalWindow`锛屾ā寮忎笌鍥捐〃绐楀畬鍏ㄤ竴鑷达紙鍚?Closing 椤哄簭鍧戯級銆?
+### 3.3 楠屾敹鏍囧噯锛坒lag M1 杈炬垚鏉′欢锛?
+- [x] 鏋勫缓 0 閿欒銆佹棦鏈?xUnit 鍏ㄧ豢锛?2/92锛夈€?- [x] 鍕鹃€夈€岀粓绔€嶅紑绐椼€佸彇娑?X 鍏崇獥銆侀噸寮€浣嶇疆璁板繂锛堝啋鐑燂細甯︾粓绔獥鍚姩 8s 鏃犲穿婧冿紱鍏抽棴閲嶅紑涓庝綅缃蹇嗛€昏緫涓庡浘琛ㄧ獥鍚屾ā寮忥級銆?- [ ] TCP 鍥炵幆锛坄nc`/鑷啓鍥炴樉鏈嶅姟锛変笅鍙?ANSI 褰╄壊搴忓垪锛氶鑹?鍏夋爣/娓呭睆姝ｇ‘娓叉煋 鈥斺€?**寰呬汉宸ョ‘璁?*銆?- [ ] 閿叆瀛楃 + Enter 鍗虫椂鍥炴樉锛堝绔洖鏄捐矾寰勶級鈥斺€?**寰呬汉宸ョ‘璁?*銆?- [ ] 婊氳疆婊氬姩婊氬洖銆佹粴鍒板簳鎭㈠璺熼殢锛涙嫋閫夊鍒躲€佺矘璐村彲鐢?鈥斺€?**寰呬汉宸ョ‘璁?*銆?- [ ] 涓插彛鎺ョ湡瀹炶澶囷紙ESP32/Linux 鏉匡級楠岃瘉鐧诲綍鎻愮ず绗︿笌浜や簰 鈥斺€?**寰呮帴璁惧浜哄伐纭**銆?
+### 3.4 娴嬭瘯
 
-### 3.2 设计要点
+- 娓叉煋/浜や簰涓?App 灞傦細鏋勫缓閫氳繃 + 涓婅妭浜哄伐鍐掔儫娓呭崟銆?- 寮曟搸琛屼负鐢?XTerm.NET 涓婃父娴嬭瘯瑕嗙洊锛堝叾 CI 鍚?wcwidth 琛ㄥ洖鏀句竴鑷存€ф祴璇曪級銆?
+## 4. M2锛歋SH 杩滅▼浼氳瘽 鉁咃紙2026-09-29 WSL 鐪熸満楠屾敹閫氳繃 + 鍥涚己闄蜂慨澶嶏級
 
-**TerminalView**（`src/SerialTool.App/Controls/TerminalView.cs`，自定义 FrameworkElement）：
+**瀹炵幇璁板綍锛?026-09-18锛?*锛歚Backends/Ssh/SshBackend.cs`锛圫SH.NET 2026.0.0锛歺term-256color PTY銆佸瘑鐮?绉侀挜锛堝甫鍙ｄ护锛夎璇併€?0s 杩炴帴瓒呮椂銆佹寚绾硅鎷掆啋鏄庣‘寮傚父锛? `KnownHostsStore.cs`锛圱OFU 绾€昏緫锛? 鍗曟祴锛夛紱`HostKeyConfirmWindow`锛堥娆?鎸囩汗鍙樻洿涓ゆ€佺‘璁わ紝鍚屾妯℃€侊級锛涜繛鎺ユ柟寮忎笅鎷夋柊澧?SSH锛堜富鏈?绔彛/鐢ㄦ埛鍚?璁よ瘉鏂瑰紡/瀵嗙爜鎴栫閽?鍙ｄ护锛屽嚟鎹笉钀界洏锛屽叾浣欐寔涔呭寲锛夛紱`TerminalView.Resized 鈫?NotifyTerminalResized 鈫?ChangeWindowSize`锛堣繙绔?`stty size` 璺熼殢锛夈€?**鐜澶囧繕**锛氭湰鏈?`dotnet restore` 瀵?nuget.org CDN 涓嬭浇 SSH.NET nupkg 鍙嶅 TLS 澶辫触锛坈url 姝ｅ父锛夆€斺€斿凡鐢?curl 灏?SSH.NET 2026.0.0 + BouncyCastle.Cryptography 2.7.0 + Logging.Abstractions 8.0.3 鎵嬪伐閾鸿繘 `~/.nuget/packages`锛堝惈 .sha512/.nupkg.metadata锛夛紝杩樺師鍛戒腑鍏ㄥ眬缂撳瓨闆剁綉缁溿€傚叾浠栨満鍣ㄩ娆¤繕鍘熻嫢閬囧悓闂鐓ф澶勭悊銆?
+**淇璁板綍锛?026-09-29锛學SL Ubuntu-22.04 sshd 鐪熸満楠屾敹椹卞姩锛?*鈥斺€旈獙鏀跺彂鐜般€岃繛鎺ユ垚鍔熶絾鍙戦€?鎸夐敭鍏ㄧ▼鏃犲弽搴斻€嶏紝椤鸿棨鎽稿嚭鍥涗釜缂洪櫡锛堜笁涓兘鏄?**SSH.NET 2026.0.0 澶х増鏈噸鍐欑殑鐮村潖鎬у彉鏇?*锛岃€佷唬鐮佹寜 2024.x 琛屼负鍐欙級锛?
+1. **`ShellStream.Write` 鍙啓鍐呴儴缂撳啿涓嶅彂鍑?*锛堟牳蹇冪己闄凤級锛?026 鐗堝繀椤绘樉寮?`Flush()` 鎵嶇湡姝ｅ彂閫氶亾锛坄WriteLine` 鍐呴儴鑷甫锛夆€斺€旇〃鐜颁负杩炴帴/鎺ユ敹鍏ㄦ甯革紝鍙戦€佹暟鎹煶娌夊ぇ娴枫€備慨澶嶏細`SshBackend.Write` 琛?`shell.Flush()`銆?2. **`HostKeyReceived` 鍦ㄥ伐浣滅嚎绋嬶紙闈炶皟鐢ㄧ嚎绋嬶級鍥炶皟**锛氳€佺増鏈湪 `Connect()` 璋冪敤绾跨▼涓婂悓姝ユ姏鍑猴紱2026 鐗堝湪鎻℃墜绾跨▼瑙﹀彂鈥斺€斿師璁捐銆孶I 绾跨▼鍚屾 Connect + 浜嬩欢閲岀洿鎺ュ脊绐椼€嶅湪涓ゅ鐐革細宸ヤ綔绾跨▼寤?Window 鎶?*璋冪敤绾跨▼蹇呴』涓?STA*锛涜嫢绠€鍗曞姞 `Dispatcher.Invoke` 鍙堜細姝婚攣锛圲I 闃诲鍦?Connect 鍐呮案涓嶆车娑堟伅锛夈€備慨澶嶏細`TogglePortAsync`/`TerminalWindow.OpenSshDialog` 鎶?`Open` 鏀?`Task.Run`锛圲I 绌洪棽锛夛紝`OnSshHostKeyVerifying` 妫€娴嬩笉鍦?UI 绾跨▼鏃?`d.Invoke` 灏侀€佸洖 UI 寮圭獥瑁佸喅鈥斺€斿悓姝?TOFU 璇箟淇濇寔銆佹棤姝婚攣銆?3. **鎸囩汗鎸戞垬 Host 鎭掓樉绀?`?`**锛氫簨浠跺湪 `_client` 璧嬪€煎墠瑙﹀彂锛宍ConnectionInfo.Host` 鍙栦笉鍒?鈫?known_hosts 瀛樺偍閿欒鏉＄洰銆備慨澶嶏細`Open` 鍏堣 `_connectHost/_connectPort` 鍏滃簳銆?4. **鎸囩汗寮圭獥浠庢湭鎴愬姛鎵撳紑杩?*锛歚HostKeyConfirmWindow` 鐨勬寚绾?MD5 `TextBlock` 璇敤 `TargetType=TextBox` 鐨?`Mono` 鏍峰紡锛圓pp.xaml 鍏ㄥ眬鍞竴绛夊鏍峰紡鏄?TextBox 涓撳睘锛夆啋 `XamlParseException`銆備慨澶嶏細鏀?`FontFamily="{DynamicResource MonoFont}"`銆?
+**楠屾敹璁板綍锛?026-09-29锛?*锛氭祴璇曞簥 = 鏈満 WSL Ubuntu-22.04 sshd锛坄127.0.0.1:22`锛沇SL 渚х幆澧冧篃淇簡锛歚.wslconfig` GBK 缂栫爜 + `;` 娉ㄩ噴瑙ｆ瀽澶辫触銆乣networkingMode=mirrored` 鏈満涓嶆敮鎸佽嚧 **VM 鏃犵綉鍗?*锛屾敼 NAT+localhostForwarding 鍚庢仮澶嶏級銆傗憼 鍚庣 `scripts/SshCheck` 鎺у埗鍙扮鍒扮 9 椤瑰叏杩囷紙瀵嗙爜/绉侀挜璁よ瘉銆佷氦浜掓敹鍙戝洖鏄俱€乣stty size` resize 璺熼殢銆?0KB 澶ф暟鎹€佹甯告柇寮€鏃犲紓甯镐簨浠躲€侀敊璇瘑鐮佹嫆缁濓級锛涒憽 GUI锛圲IA 椹卞姩锛夊叏閾捐矾锛氶杩炴寚绾瑰脊绐椻啋淇′换鈫掕繛鎺モ啋鍙戦€佸尯鍙戝懡浠?*杩滅鐪熷疄鎵ц**锛坄touch` 钀界洏楠岃瘉 + RX 鍥炴樉锛夆啋鏂紑鈫掗噸杩?TOFU 鐩撮€氬厤寮圭獥锛涒憿 107 鍗曟祴鍏ㄧ豢銆俠ash/htop/vim 鍏ㄥ睆 TUI 涓庢柇閾炬彁绀轰袱椤逛粛寰呮棩甯镐娇鐢ㄥ鏍搞€?
+### 4.1 鐩爣琛屼负
 
-- 度量：字体 `Cascadia Mono, SimSun` 复合族（2026-09-19 用户对比截图后选定，演进见 §6：TNR 比例字体方案废弃）。格宽 = max(Cascadia Mono 数字 "0" 字宽≈8.2 DIP, SimSun 全角/2=7)——等宽字体单字符宽即格宽，中文两格 16.4 vs 字形 14 留白仅 2.4；行高 = max(两字体行高)×1.08；`Resize` 按视口尺寸反推行列（下限 80×24 起步按内容）。
-- 渲染（`OnRender`）：背景 → 逐行同底色连续格合并为一个矩形；文字**逐格**绘制（为比例字体兼容性设计——字宽≠格宽时合并 run 会漂移；等宽字体下结果与合并等价），`FormattedText` 按 (文本,粗,斜,前景色) 缓存、DPI 变化清空；超格宽字符水平压缩兜底 → 光标（块/闪 530ms）→ 选区高亮。只画视口行（`Lines[YDisp + row]`），`Width==0` 续格跳过。
-- 字节泵：`ConcurrentQueue<byte[]>`（任意线程投递）+ `DispatcherTimer 16ms` 出队 `terminal.Write` + 合帧失效（输出高峰每帧最多一次全视口重绘）。
-- 输入：`KeyDown` → `GenerateKeyInput`（返回字节序列）→ `InputEmitted` 事件；`TextInput`（IME）→ `GenerateCharInput`；粘贴文本逐字节写入。
-- 引擎回话（`DataReceived` 事件，如 DA 应答/DSR 光标报告）→ 同样走 `InputEmitted` 发对端。
-- 滚回：自维护视口偏移（跟随底部= `Lines.Count - Rows`），滚轮步进 3 行；`BufferChanged` 备屏时钳到底。
+- 杩炴帴鏂瑰紡涓嬫媺鏂板銆孲SH銆嶏細涓绘満/绔彛(22)/鐢ㄦ埛鍚?璁よ瘉锛堝瘑鐮?or 绉侀挜鏂囦欢+鍙ｄ护锛夈€?- 棣栨杩炴帴寮?host key 鎸囩汗纭锛圱OFU锛歋HA256 Base64 灞曠ず锛屾帴鍙楀悗鍐?`Config/known_hosts.json`锛涘彉鏇?绾㈣壊璀﹀憡鎷掔粷鐩磋繛锛夈€?- 浜や簰 shell锛氱粓绔獥澶嶇敤 M1 鎺т欢锛涚獥鍙?resize 鈫?`channel.SendWindowChange`锛沗TitleChanged` 鈫?绐楀彛鏍囬銆?- 鏂嚎锛氱粓绔繚鐣欑幇鍦?+ 鐘舵€佹爮鎻愮ず锛涢敊璇繘鏃㈡湁 `ErrorOccurred` 閾捐矾銆?
+### 4.2 璁捐瑕佺偣
 
-**接线**（`MainViewModel` / `MainWindow`）：
+- `SshBackend : IBusBackend`锛圔ackends 椤圭洰锛夛細`Connect` 鍐呰捣璇荤嚎绋嬫车 shell 娴?鈫?`DataReceived`锛沗Write` 鈫?娴佸啓锛涘瘑閽ョ敤 `PrivateKeyFile`锛圤penSSH/PEM锛?*涓嶆敮鎸?.ppk**锛孶I 娉ㄦ槑锛夈€?- `Terminal` 鏋勯€犲弬鏁?`Cols/Rows` 鍒濆€煎彇 M1 鎺т欢搴﹂噺锛沗Resized`/鎺т欢 resize 鈫?鍚庣鍥炶皟杞彂銆?- 璁よ瘉鍑嵁**涓嶆寔涔呭寲**锛堜粎璁颁綇涓绘満/鐢ㄦ埛鍚?瀵嗛挜璺緞锛夈€?- 鍗曟祴锛歬nown_hosts 鍔犺浇/鍖归厤/鎸囩汗瑙ｆ瀽锛堢函閫昏緫锛宼ests 寮曠敤 Backends锛夈€?
+### 4.3 楠屾敹鏍囧噯锛坒lag M2锛?
+- [x] 瀵嗙爜璁よ瘉杩炵湡瀹?Linux 涓绘満锛宐ash 浜や簰姝ｅ父 鈥斺€?鉁?2026-09-29 WSL sshd 鐪熸満锛圙UI 鍙戦€佸懡浠よ繙绔墽琛?+ RX 鍥炴樉楠岃瘉锛夛紱htop/vim 鍏ㄥ睆 TUI 寰呮棩甯镐娇鐢ㄥ鏍搞€?- [x] 绉侀挜锛圤penSSH ed25519锛夎璇侀€氳繃 鈥斺€?鉁?2026-09-29锛圫shCheck 绔埌绔紝瀵嗛挜涓存椂鐢熸垚瑁呭叆 WSL authorized_keys锛夈€?- [x] 棣栬繛 TOFU 寮圭獥 鈫?鎺ュ彈鍚庨噸杩炰笉鍐嶈闂?鈥斺€?鉁?2026-09-29 GUI 瀹炴祴锛堥杩炲脊绐椻啋淇′换鈫択nown_hosts 钀界洏鈫掗噸杩炵洿閫氬厤寮圭獥锛夛紱绡℃敼鎸囩汗鎷掔粷椤圭敱 6 鍗曟祴瑕嗙洊銆?- [x] 缁堢绐楁嫋鎷?resize 鈫?杩滅 `stty size` 璺熼殢 鈥斺€?鉁?2026-09-29锛圫shCheck `ResizeTerminal(120,40)` 鈫?`stty size` 杈撳嚭 `40 120`锛夈€?- [ ] 鏂綉/涓绘満涓嬬嚎 鈫?鏄庣‘鏂嚎鎻愮ず锛岀▼搴忎笉宕?鈥斺€?**寰呬汉宸ョ湡鏈?*锛堟柇绾胯蛋鏃㈡湁 ErrorOccurred 閾捐矾锛?026-09-29 鏇鹃亣 WSL VM 绌洪棽鍥炴敹鑷撮摼璺兊姝汇€丄pp 鏈寮傚父锛屽悗缁彲鍔?keepalive 妫€娴嬶級銆?
+## 5. M3锛氬浼氳瘽绠＄悊 鉁咃紙浠ｇ爜瀹屾垚锛屽骞跺彂楠屾敹寰呬汉宸ワ級
 
-- `[ObservableProperty] ShowTerminalPanel`（持久化）；`RawRxTap` 事件（`OnDataReceived` 内原样抛字节，读线程）；`SendRawBytes()`（复用现有 TX 计数与波形跳变，跳过 `_lines`/日志）。
-- MainWindow 持 `_terminalWindow`，模式与图表窗完全一致（含 Closing 顺序坑）。
+**瀹炵幇璁板綍锛?026-09-19锛?*锛氱粓绔獥閲嶆瀯涓?TabControl鈥斺€斾富杩炴帴鍥哄畾绗竴鏍囩锛坄TerminalSession.ForMain`锛屽悗绔粛褰?MainViewModel锛屽瓧鑺傝蛋 RawRxTap 鏃佽矾锛涙爣棰橀殢杩炴帴鏂瑰紡/鐘舵€佽仈鍔紝濡傘€屼富杩炴帴 路 SSH root@192.168.1.10銆嶏級+ 鐙珛浼氳瘽鏍囩锛坄TerminalSession.Ssh` 鑷寔 SshBackend锛屾帴绾?RX鈫扸iew/杈撳叆鈫扺rite/resize鈫掗€氶亾鍙樻洿锛屽叧鏍囩鍗虫柇寮€锛夈€傚伐鍏锋潯锛氥€? SSH銆嶆柊寤轰細璇濓紙`SshConnectDialog`锛氶濉富闈㈡澘鍙傛暟/淇濆瓨浼氳瘽棰勫～锛屽嚟鎹笉钀界洏锛夈€併€屽凡淇濆瓨浼氳瘽銆嶄笅鎷?+ 杩炴帴/鍒犻櫎锛坄Config/terminal_sessions.json`锛孲avedSessionsStore 鎸夊悕绉板幓閲嶏級銆俬ost key TOFU 澶嶇敤涓昏繛鎺ュ悓涓€鍏ュ彛锛坄vm.VerifyHostKey` 鍏紑鍖栵紝寮圭獥 Owner 浠嶄负涓荤獥锛夈€備富璋冭瘯閾捐矾锛堝崟 _active锛夊畬鍏ㄦ湭鍔ㄣ€?鑼冨洿鍙栬垗锛氱嫭绔嬩細璇?v1 浠?SSH锛圱elnet/鏈湴缁堢闅?M4 鍔犲叆锛夛紱澶氫覆鍙ｇ嫭绔嬩細璇濇湭鍋氾紙涓昏繛鎺ュ凡瑕嗙洊鍗曚覆鍙ｅ満鏅級銆?
+### 5.1 鐩爣琛屼负
 
-### 3.3 验收标准（flag M1 达成条件）
+- 缁堢绐楁敼鏍囩椤靛鍣紙涓€涓粓绔獥鍐?N 涓?tab锛屾瘡 tab 鐙珛杩炴帴锛夛紱鎴栦繚鐣欏绐楋紙鎸夊疄鐜版垚鏈畾锛屽€惧悜 tab锛夈€?- 浼氳瘽闈㈡澘锛氫繚瀛樼殑涓绘満鍒楄〃锛堝悕绉?鍦板潃/璁よ瘉鏂瑰紡锛夆啋 鍙屽嚮蹇€熻繛鎺ワ紱鏀寔涓插彛浼氳瘽涓?SSH 浼氳瘽骞跺垪銆?- 鏍囩鏍囬 = 浼氳瘽鍚?host锛涘叧闂爣绛?鏂紑璇ヨ繛鎺ャ€?
+### 5.2 璁捐瑕佺偣
 
-- [x] 构建 0 错误、既有 xUnit 全绿（92/92）。
-- [x] 勾选「终端」开窗、取消/X 关窗、重开位置记忆（冒烟：带终端窗启动 8s 无崩溃；关闭重开与位置记忆逻辑与图表窗同模式）。
-- [ ] TCP 回环（`nc`/自写回显服务）下发 ANSI 彩色序列：颜色/光标/清屏正确渲染 —— **待人工确认**。
-- [ ] 键入字符 + Enter 即时回显（对端回显路径）—— **待人工确认**。
-- [ ] 滚轮滚动滚回、滚到底恢复跟随；拖选复制、粘贴可用 —— **待人工确认**。
-- [ ] 串口接真实设备（ESP32/Linux 板）验证登录提示符与交互 —— **待接设备人工确认**。
+- 鐜版湁 VM 鏄崟 `_active` 杩炴帴妯″瀷锛歁3 鎶娿€岃繛鎺ュ疄渚嬨€嶆娊璞′负 `SessionViewModel`锛坆ackend + terminal + 鐘舵€侊級锛屼富鐣岄潰淇濇寔鍗曟椿鍔ㄨ繛鎺ヤ笉鍙橈紙璋冭瘯涓婚摼璺笉鍔級锛屽杩炴帴鍙瓨鍦ㄤ簬缁堢绐楀唴銆?- 淇濆瓨浼氳瘽杩?`Config/sessions.json`锛堝瘑鐮佺粷涓嶈惤鐩橈級銆?
+### 5.3 楠屾敹鏍囧噯锛坒lag M3锛?
+- [ ] 鍚屾椂淇濇寔 鈮? 涓?SSH 浼氳瘽鐙珛鏀跺彂 鈥斺€?**寰呬汉宸ョ湡鏈?*銆?- [ ] 淇濆瓨涓绘満 鈫?閲嶅惎绋嬪簭 鈫?閫変腑鐐广€岃繛鎺ャ€嶄竴閿噸杩烇紙鍑嵁琛ヨ緭锛夆€斺€?**寰呬汉宸ョ湡鏈?*銆?- [ ] 鍏虫爣绛?鍏崇獥姝ｇ‘鏂紑瀵瑰簲杩炴帴锛堟棤鍙ユ焺娉勬紡锛夆€斺€?**寰呬汉宸ョ湡鏈?*锛堥攢姣佽矾寰勶細鍏虫爣绛?鍏崇獥/涓荤獥閫€鍑轰笁澶勫潎宸叉竻鐞嗭級銆?
+## 6. M4锛氬彲閫夋墿灞?鉁咃紙Telnet + 鏈湴缁堢 + RTT 瀹屾垚锛汼FTP/绔彛杞彂寰呴渶姹傦級
 
-### 3.4 测试
-
-- 渲染/交互为 App 层：构建通过 + 上节人工冒烟清单。
-- 引擎行为由 XTerm.NET 上游测试覆盖（其 CI 含 wcwidth 表回放一致性测试）。
-
-## 4. M2：SSH 远程会话 ✅（2026-09-29 WSL 真机验收通过 + 四缺陷修复）
-
-**实现记录（2026-09-18）**：`Backends/Ssh/SshBackend.cs`（SSH.NET 2026.0.0：xterm-256color PTY、密码/私钥（带口令）认证、10s 连接超时、指纹被拒→明确异常）+ `KnownHostsStore.cs`（TOFU 纯逻辑，6 单测）；`HostKeyConfirmWindow`（首次/指纹变更两态确认，同步模态）；连接方式下拉新增 SSH（主机/端口/用户名/认证方式/密码或私钥+口令，凭据不落盘，其余持久化）；`TerminalView.Resized → NotifyTerminalResized → ChangeWindowSize`（远端 `stty size` 跟随）。
-**环境备忘**：本机 `dotnet restore` 对 nuget.org CDN 下载 SSH.NET nupkg 反复 TLS 失败（curl 正常）——已用 curl 将 SSH.NET 2026.0.0 + BouncyCastle.Cryptography 2.7.0 + Logging.Abstractions 8.0.3 手工铺进 `~/.nuget/packages`（含 .sha512/.nupkg.metadata），还原命中全局缓存零网络。其他机器首次还原若遇同问题照此处理。
-
-**修复记录（2026-09-29，WSL Ubuntu-22.04 sshd 真机验收驱动）**——验收发现「连接成功但发送/按键全程无反应」，顺藤摸出四个缺陷（三个都是 **SSH.NET 2026.0.0 大版本重写的破坏性变更**，老代码按 2024.x 行为写）：
-
-1. **`ShellStream.Write` 只写内部缓冲不发出**（核心缺陷）：2026 版必须显式 `Flush()` 才真正发通道（`WriteLine` 内部自带）——表现为连接/接收全正常，发送数据石沉大海。修复：`SshBackend.Write` 补 `shell.Flush()`。
-2. **`HostKeyReceived` 在工作线程（非调用线程）回调**：老版本在 `Connect()` 调用线程上同步抛出；2026 版在握手线程触发——原设计「UI 线程同步 Connect + 事件里直接弹窗」在两处炸：工作线程建 Window 抛 *调用线程必须为 STA*；若简单加 `Dispatcher.Invoke` 又会死锁（UI 阻塞在 Connect 内永不泵消息）。修复：`TogglePortAsync`/`TerminalWindow.OpenSshDialog` 把 `Open` 放 `Task.Run`（UI 空闲），`OnSshHostKeyVerifying` 检测不在 UI 线程时 `d.Invoke` 封送回 UI 弹窗裁决——同步 TOFU 语义保持、无死锁。
-3. **指纹挑战 Host 恒显示 `?`**：事件在 `_client` 赋值前触发，`ConnectionInfo.Host` 取不到 → known_hosts 存储错误条目。修复：`Open` 先记 `_connectHost/_connectPort` 兜底。
-4. **指纹弹窗从未成功打开过**：`HostKeyConfirmWindow` 的指纹/MD5 `TextBlock` 误用 `TargetType=TextBox` 的 `Mono` 样式（App.xaml 全局唯一等宽样式是 TextBox 专属）→ `XamlParseException`。修复：改 `FontFamily="{DynamicResource MonoFont}"`。
-
-**验收记录（2026-09-29）**：测试床 = 本机 WSL Ubuntu-22.04 sshd（`127.0.0.1:22`；WSL 侧环境也修了：`.wslconfig` GBK 编码 + `;` 注释解析失败、`networkingMode=mirrored` 本机不支持致 **VM 无网卡**，改 NAT+localhostForwarding 后恢复）。① 后端 `scripts/SshCheck` 控制台端到端 9 项全过（密码/私钥认证、交互收发回显、`stty size` resize 跟随、20KB 大数据、正常断开无异常事件、错误密码拒绝）；② GUI（UIA 驱动）全链路：首连指纹弹窗→信任→连接→发送区发命令**远端真实执行**（`touch` 落盘验证 + RX 回显）→断开→重连 TOFU 直通免弹窗；③ 107 单测全绿。bash/htop/vim 全屏 TUI 与断链提示两项仍待日常使用复核。
-
-### 4.1 目标行为
-
-- 连接方式下拉新增「SSH」：主机/端口(22)/用户名/认证（密码 or 私钥文件+口令）。
-- 首次连接弹 host key 指纹确认（TOFU：SHA256 Base64 展示，接受后写 `Config/known_hosts.json`；变更=红色警告拒绝直连）。
-- 交互 shell：终端窗复用 M1 控件；窗口 resize → `channel.SendWindowChange`；`TitleChanged` → 窗口标题。
-- 断线：终端保留现场 + 状态栏提示；错误进既有 `ErrorOccurred` 链路。
-
-### 4.2 设计要点
-
-- `SshBackend : IBusBackend`（Backends 项目）：`Connect` 内起读线程泵 shell 流 → `DataReceived`；`Write` → 流写；密钥用 `PrivateKeyFile`（OpenSSH/PEM，**不支持 .ppk**，UI 注明）。
-- `Terminal` 构造参数 `Cols/Rows` 初值取 M1 控件度量；`Resized`/控件 resize → 后端回调转发。
-- 认证凭据**不持久化**（仅记住主机/用户名/密钥路径）。
-- 单测：known_hosts 加载/匹配/指纹解析（纯逻辑，tests 引用 Backends）。
-
-### 4.3 验收标准（flag M2）
-
-- [x] 密码认证连真实 Linux 主机，bash 交互正常 —— ✅ 2026-09-29 WSL sshd 真机（GUI 发送命令远端执行 + RX 回显验证）；htop/vim 全屏 TUI 待日常使用复核。
-- [x] 私钥（OpenSSH ed25519）认证通过 —— ✅ 2026-09-29（SshCheck 端到端，密钥临时生成装入 WSL authorized_keys）。
-- [x] 首连 TOFU 弹窗 → 接受后重连不再询问 —— ✅ 2026-09-29 GUI 实测（首连弹窗→信任→known_hosts 落盘→重连直通免弹窗）；篡改指纹拒绝项由 6 单测覆盖。
-- [x] 终端窗拖拽 resize → 远端 `stty size` 跟随 —— ✅ 2026-09-29（SshCheck `ResizeTerminal(120,40)` → `stty size` 输出 `40 120`）。
-- [ ] 断网/主机下线 → 明确断线提示，程序不崩 —— **待人工真机**（断线走既有 ErrorOccurred 链路；2026-09-29 曾遇 WSL VM 空闲回收致链路僵死、App 未见异常，后续可加 keepalive 检测）。
-
-## 5. M3：多会话管理 ✅（代码完成，多并发验收待人工）
-
-**实现记录（2026-09-19）**：终端窗重构为 TabControl——主连接固定第一标签（`TerminalSession.ForMain`，后端仍归 MainViewModel，字节走 RawRxTap 旁路；标题随连接方式/状态联动，如「主连接 · SSH root@192.168.1.10」）+ 独立会话标签（`TerminalSession.Ssh` 自持 SshBackend，接线 RX→View/输入→Write/resize→通道变更，关标签即断开）。工具条：「+ SSH」新建会话（`SshConnectDialog`：预填主面板参数/保存会话预填，凭据不落盘）、「已保存会话」下拉 + 连接/删除（`Config/terminal_sessions.json`，SavedSessionsStore 按名称去重）。host key TOFU 复用主连接同一入口（`vm.VerifyHostKey` 公开化，弹窗 Owner 仍为主窗）。主调试链路（单 _active）完全未动。
-范围取舍：独立会话 v1 仅 SSH（Telnet/本地终端随 M4 加入）；多串口独立会话未做（主连接已覆盖单串口场景）。
-
-### 5.1 目标行为
-
-- 终端窗改标签页容器（一个终端窗内 N 个 tab，每 tab 独立连接）；或保留多窗（按实现成本定，倾向 tab）。
-- 会话面板：保存的主机列表（名称/地址/认证方式）→ 双击快速连接；支持串口会话与 SSH 会话并列。
-- 标签标题 = 会话名/host；关闭标签=断开该连接。
-
-### 5.2 设计要点
-
-- 现有 VM 是单 `_active` 连接模型：M3 把「连接实例」抽象为 `SessionViewModel`（backend + terminal + 状态），主界面保持单活动连接不变（调试主链路不动），多连接只存在于终端窗内。
-- 保存会话进 `Config/sessions.json`（密码绝不落盘）。
-
-### 5.3 验收标准（flag M3）
-
-- [ ] 同时保持 ≥3 个 SSH 会话独立收发 —— **待人工真机**。
-- [ ] 保存主机 → 重启程序 → 选中点「连接」一键重连（凭据补输）—— **待人工真机**。
-- [ ] 关标签/关窗正确断开对应连接（无句柄泄漏）—— **待人工真机**（销毁路径：关标签/关窗/主窗退出三处均已清理）。
-
-## 6. M4：可选扩展 ✅（Telnet + 本地终端 + RTT 完成；SFTP/端口转发待需求）
-
-**实现记录（2026-09-19）**：
-- **Telnet**：`Backends/Telnet/TelnetNegotiator.cs`（RFC 854 IAC 协商纯逻辑，9 单测：透传/IAC IAC 转义/WILL-DO 应答策略〔接受服务器 ECHO+SGA、其余拒绝〕/DO 全拒含 NAWS/子协商丢弃/单字节命令忽略/跨包分片状态机/输出转义/数据流混合）+ `TelnetBackend`（同构事件流，协商应答读线程直写）；终端窗「+ Telnet」对话框 + 会话标签；保存会话 Kind="telnet" 快速连接分支。
-- **本地终端**：`App/Services/ConPtySession.cs`（ConPTY 纯 P/Invoke 零依赖，实现 IBusBackend；pwsh→powershell 探测兜底；EOF→等退→Terminate→CancelSynchronousIo 取消阻塞读→收 ConPTY 的关闭顺序〔2026-09-21 修订，见下条〕）。**实测通过**：PowerShell 启动横幅/命令回显（含 VT 着色）/resize/销毁全链路。
-- **开箱即用（2026-09-19 用户反馈）**：终端窗打开时若主连接未建立，**自动开一个本地终端标签**并聚焦——打开终端即可直接输命令，无需先连串口/TCP/SSH 或找「+ 本地」按钮；用户主动关闭该标签后不重开。冒烟验证：默认配置（终端窗关）零子进程；终端窗开 + 未连接 → conhost+powershell 自动拉起。
-- **ConPTY 踩坑记录（重要）**：① STARTUPINFOW 必须含全部 8 个 DWORD（易漏 dwXSize/dwYSize）——缺 2 个使 STARTUPINFOEXW=104≠112，CreateProcessW 报 **Win32 错误 87**；② 必须设 `STARTF_USESTDHANDLES`（对齐 Pty.Net 生产实现）——否则子进程**回落父控制台**而非挂接 ConPTY（症状：输出漏到宿主进程控制台、管道只有 16 字节初始化转义）。两处均已在代码注释中标注。
-- **Win10 关终端窗死锁修复（2026-09-21，用户 Win10 复现机挂起 dump 实锤）**：根因 = **Win10 `ClosePseudoConsole` 在输出管道存在挂起同步 ReadFile 时永不返回**（微软已知缺陷，Win11 已修，故本机不复现）——`Teardown` 原在 UI 线程（TerminalWindow.OnClosing → Dispose 链）执行 → UI 永久卡死。修复两层：① `Close()/Dispose()` 改 `Task.Run(Teardown)` 卸载线程池（`Interlocked` 防 Close/Dispose 双重入队），UI 不再承担拆卸风险；② 拆卸顺序在 Terminate 后插入「`CancelSynchronousIo` 取消读线程阻塞读（读线程自记 `_readTid`，`OpenThread(THREAD_TERMINATE)` 取句柄）→ `Join(1000)`」再 `ClosePseudoConsole`。**dump 分析插曲**：原转储 flag（`MiniDumpNormal|IndirectlyReferencedMemory`）缺模块数据段，dotnet-dump/ClrMD 均找不到 CLR——托管栈靠手写 minidump 解析器（线程上下文 RIP/RSP + VA→文件偏移翻译 + 栈 qword 扫描命中模块区间）读出；CrashLogger 转储 flag 同轮补强为含数据段/句柄/线程信息（体积仍数 MB 级）。本机（Win11）实测开→关→重开→关两轮干净、无挂起报告、107 单测全绿；**Win10 复现机验证通过（2026-09-30）**：用户在目标机实测 v1.4.3 发布版终端可正常运行，死锁修复真机生效，此项关闭。
-- **终端配色现代化（2026-09-19 用户反馈「优化 shell 界面显示和文字配色」）**：XTerm.NET 默认纯黑底（#000000）+ 纯白字 + VGA 老调色板 → 改 **Campbell 调色板（Windows Terminal 默认 16 色）+ VS Code 式柔和深底**：背景 #1E1E1E、前景 #D4D4D4、光标 #AEAFAD、选区 #264F78，经 `TerminalOptions.Theme`（`ThemeOptions`）下发；宿主 Border 背景与未连接遮罩同步 #1E1E1E（`TerminalView.ThemeBackground` 常量单一来源）。**同轮修复潜藏渲染缺陷**：原 DrawRun 把 `GetFgColorMode()==0` 当「默认色」——实际 mode 0 = **256 色调色板索引**（256/257 才是默认标记，mode 1 = RGB 直出），导致全部索引色（含 30-37/90-97 SGR 标准色、38;5;n 256 色）被画成默认前景色、索引背景整片不画；新增 `ResolveAttrColor`（mode 分流 + 默认标记 + `PaletteColor` 查表）统一 DrawRun 与 Block 光标重画两路。验证：本地 PowerShell 标签灌入 16 色 Write-Host + 38;5;208 + 38;2 真彩 + 粗体/下划线混排，截屏逐色肉眼核对正确；107 单测全绿。
-- **终端字体更换（2026-09-19，三轮演进）**：① 用户指定英文 **Times New Roman**、中文 GB2312（本机无 仿宋_GB2312/楷体_GB2312 命名字体 → 宋体 SimSun，GB2312 字符集标准字体）。**渲染架构随之调整**：TNR 是比例字体（i=3.9 / W=13.2 DIP @14pt），原「同属性连续格合并为一条 FormattedText」会让后续字符按自然字宽推进、漂出格网——改为**逐格定位绘制** + `FormattedText` 缓存（key=文本/粗/斜/前景色，DPI 变化清空），背景仍按同底色段合并。② 格宽初版取 max(TNR 粗体 W≈13.7, SimSun 全角/2) → 用户实测反馈「占位太宽」→ 降 9 DIP 基准 + 超格字符（M/W/m/w）水平压缩。③ 用户仍不满意，要求「参考 VS Code 终端」——出 TNR vs **Cascadia Mono**（VS Code 终端默认等宽）双方案对比截图，用户选定后者：**最终方案 = `Cascadia Mono, SimSun`**，格宽 = max(数字 0 字宽≈8.2, 全角/2=7)，字距天然均匀、零压缩、对齐精准；逐格绘制与压缩逻辑保留（等宽下不触发，留作防御）。教训：**终端网格场景优先等宽字体，比例字体的压缩/稀疏怎么调都有妥协**。验证：离屏截图逐项核对 + 真实应用窗口截图复核（长路径单行不折行、字符均匀）。
-- **Ctrl+C 失效根因与修复（2026-09-19 用户反馈「ctrl+c 没效果」）**：XTerm.NET 的 `Selection.HasSelection` 在**零宽选区**（单击未拖动）后也为真，且 `GetSelectionText()` 对零宽返回 anchor 处 1 个字符（非空）——鼠标点终端聚焦一次，`Ctrl+C` 就被「有选区→复制」分支吞掉（还污染剪贴板 1 字符），`^C` 永远发不出去。修复三层：① 鼠标抬起时零宽选区即 `ClearSelection`；② `Ctrl+C` 复制分支加「选文非空」守卫；③ **`CopySelection` 复制后清除选区**（Windows Terminal/xterm.js 惯例——引擎不会因新输出/键入自动清选区，残留选区会让后续 Ctrl+C 永远进复制分支）。另实测澄清：`\x03` 写入 ConPTY 输入管在 cmd / powershell(PSReadLine) 下均能正常中断运行中命令（ping -t）与取消行编辑，后端链路无问题。验证：WPF harness 对 TerminalView 注入真实 Ctrl+C 键击（SendInput）——无选区发 03 / 有选区复制且选区即清 / 复制后再按发 03，全过。
-- **终端交互体验修复（2026-09-25 用户反馈「选中不能 Ctrl+C/V、TUI 不能滑动」）**：三个根因——① 应用开鼠标跟踪（vim/htop）后鼠标事件**全量转发给应用**，本地选区逻辑不触发，选不上字自然无从复制；② `Ctrl+V` 从未绑定粘贴（原落到字符路径发 `\x16`）；③ 备屏+无鼠标跟踪时滚轮**直接丢弃**（代码 `return`），less/man/vim 关鼠标下滚轮等于废的。修复（全在 `TerminalView`，对齐 Windows Terminal/xterm 惯例）：**Shift+左键拖动强制文字选择**（`_forceSelecting` 标记绕过跟踪）、**Shift+右键强制弹上下文菜单**（跟踪时右键事件原本也被吃掉）；**Ctrl+V 粘贴**（原 `\x16` literal-next 极少使用，Ctrl+Shift+V 终端标准键保留）；备屏+无跟踪滚轮**模拟 Up/Down 键**（每格 3 行）；**Shift+滚轮**始终终端自处理——非备屏强制滚回滚 / 备屏模拟 PgUp/PgDn 整页翻动；同轮**补全鼠标转发缺口**：左键 Down/Up/Drag（Drag 按 ButtonEvent/AnyEvent 模式）、右键 Down/Up（原实现只转发滚轮）。滚轮多格滚动（|Delta|>120）按格数展开发送。验证：构建 0 错误；用户本地终端实测 vim/less 滚轮与 Shift 选择复制确认。
-- **IME 候选框跟随光标（2026-09-25 用户反馈「输中文时预览行固定显示在显示器左上角」；2026-09-26 定稿）**：根因 = TerminalView 是自绘控件，走 WPF 默认 TSF 文本存储时输入法查不到光标矩形（自绘控件没有 TextView），候选框/预编辑串就丢屏幕 (0,0)。**两轮失败教训**：① IMM32 钩子路径（HwndSource 挂 `WM_IME_STARTCOMPOSITION` 等 + `ImmSetCompositionWindow`/`ImmSetCandidateWindow`）对纯 TSF 输入法（微信输入法）无效——它根本不经由 IMM 设位；② 按 LightTextEditorPlus 配方加 `InputMethod.SetIsInputMethodSuspended=true` 走 IMM/AIMM 桥接，反而把 WPF 的文本提交链路整个掐断（中文完全输不了）。**最终方案 = 内联预编辑隐藏 TextBox（xterm.js 同款架构 + Windows Terminal 观感，2026-09-26 三轮定稿）**：`TerminalView` 基类 `FrameworkElement`→`Grid`，内藏 TextBox（无边框无内边距、IsHitTestVisible=false、**背景 null + CaretBrush 透明**——空框完全不可见不挡终端光标）承接键盘焦点——WPF TextBox 自带完整 TSF/IMM 支持，输入法候选框由 WPF 锚定到框内光标；框体每帧叠到终端游标格上、**宽取到右缘**（OnRender 末尾 `UpdateImeBoxPosition`），组合期 IME 在框文档里画的**预编辑串（带下划线）即以终端同款字体/前景色内联显示在光标行**，候选条紧跟其下（对齐 Windows Terminal 观感）；组合期终端自己的光标让位（RenderCursor 跳过），前景色随主题（含 OSC 10 运行时改色）。**第三个坑（用户截图反馈「蓝色输入框」）**：WPF 组合期用 `SelectionBrush`（默认系统高亮蓝）画预编辑串背景——亮色应用里不显眼、深色终端上成蓝块；`SelectionBrush=Transparent` + `SelectionTextBrush` 每帧跟终端前景即还原 WT 式「下划线裸字」。**第四个坑（Claude Code 场景蓝块复发，纯 PS 不现——像素扫描 0/34200 蓝素实证修复）**：TUI 应用高频重绘让引擎光标抖动，框跟着挪（每帧 UpdateImeBoxPosition）→ 输入法认为组合锚点不稳，弃用内联渲染、改画**自己的蓝色悬浮面板**（微信输入法）；`UpdateImeBoxPosition` 开头 `if (_imeComposing) return;` **组合期冻结锚点**即恢复内联（组合开始时框已在游标处，冻结到结束）。输入分流：直打字符 `PreviewTextInput` 直发对端（handled 阻断插入，框内不存字）；IME 上屏文字 `TextChanged` 转发后清空，预编辑阶段（`_imeComposing`）不转发——组合状态由 `TextCompositionManager` 三个附加事件（handledEventsToo）+ `WM_IME_START/ENDCOMPOSITION` 窗口钩子双通道跟踪（消息只响应本框握焦点，多标签共享 HWND 无串扰）；特殊键/快捷键仍走原 `OnPreviewKeyDown`（Preview 隧道先于隐藏框，原逻辑零改动）；焦点语义不变（`Focus()` new 转给隐藏框，宿主 `FocusActiveView` 无感）。**第二个坑（用户实测「候选框位置对了但中文上不了屏」+ 诊断日志实锤）**：微信输入法上屏时序 = 最终文字先进框（TextChanged 触发时 `_imeComposing` 仍 true，冲刷被守卫拦下）→ 组合结束事件（PreviewTextInput Final / WM_IME_ENDCOMPOSITION）晚几毫秒才到——复位后没人补冲刷，文字滞留框内发不出去（纯 PS 提示符下偶发顺序相反才碰巧通过）。修复：Final/ENDCOMPOSITION 复位后 `ScheduleImeFlush()` 以 **Background 优先级推迟冲刷**——等 TSF 对文档的写入在本轮输入分派内落定再取框内最终文字，两种时序都正确且不会误发预编辑串（冲刷与 TextChanged 路径先到先发、幂等）。验证（SendInput 驱动真输入法端到端，截屏肉眼核对）：微信输入法拼音 "nihao" 组合——预编辑下划线串画在终端光标处 + 候选条紧跟输入行下方（窗口内）；空格上屏——「你好」正确落到 PowerShell 提示符（含时序修复后复验）；ASCII "test99" 直打链路回归通过。**第五个坑（2026-09-26 用户再报「还是有蓝色的输入框」——纯 PS 空闲态即现，与组合无关）**：这个常驻蓝框根因根本不在输入法——App.xaml 的全局隐式 `Style TargetType="TextBox"`（圆角模板 + `IsKeyboardFocusWithin` 触发器把模板 `Bd` Border 直改 AccentBrush 蓝色 1.5px，另带 MinHeight=28/Padding=6,4），`new TextBox()` 默认吃隐式样式，而触发器改的是**模板内 Border**，框上局部设 `BorderThickness=0`/`FocusVisualStyle=null` 全拦不住 → 隐藏框一有键盘焦点即显形成蓝色圆角框（空闲恒定、组合/取消/英文模式/失焦全不变——五阶段像素扫描 bbox 恒等于框边界，966 蓝素）。修复 = BuildImeBox 里 `Style = null` 剥离隐式样式（一行）；复检 966→54（余量为窗口左缘静态杂色，与框无关）+ 截图肉眼核对。**排障教训**：蓝框 bbox 精确贴合「自建控件的边界 + 焦点态恒定」时先查自家全局样式（隐式样式/模板触发器），别先赖输入法——本轮前四个坑全在防输入法，真凶是自家样式。
-- **终端窗/图表窗独立化 + 主窗入口改按钮（2026-09-26 用户报「启动终端界面或波形界面会强制拉起主窗」）**：根因 = 两窗创建时设了 `Owner = 主窗`——Win32 从属窗口（owned window）被绑进主窗的激活组：① 从属窗不能脱离隐藏/最小化的主窗单独显示，`Show()` 从属窗会把主窗强制带出来（WPF 里甚至给未 Show 过的窗口设 Owner 直接抛异常，当年 XAML 初始化期崩溃即此语义）；② 从属窗永远浮于主窗之上（Z 序绑定）；③ 激活从属窗会连带激活主窗、主窗最小化/还原联动从属窗——三条合起来即「新窗不独立、强制拉起主窗」。修复：`ChartWindow`/`TerminalWindow` 不再设 Owner，成为与主窗平级的独立顶层窗口（任务栏独立条目、可压到主窗之下/拖到另一台显示器）。同轮用户要求把主窗顶部「波形」「终端」复选框改**按钮**：点按打开（已开则 `Activate()` 带到前台），关闭只走窗口 X；原先复选框的 Checked/Unchecked 事件链移除，显隐统一由 `ShowWavePanel`/`ShowTerminalPanel` 属性变化驱动（`MainWindow.OnVmPropertyChanged` 分发 → `ApplyWavePanelState`/`ApplyTerminalPanelState`；窗口 X 的延迟回写 false → 销毁分支不变），「上次退出时开着则随启动打开」的记忆行为保留。构建 0 错误、107 单测全绿。
-- **RTT 会话（2026-09-30，SEGGER Real-Time Transfer / J-Link 探针，目标场景 = 固件已集成 SEGGER RTT 的零 UART 高速日志/交互）**：终端窗「+ RTT」第四类独立会话，`IBusBackend` 同构接入（轮询拉数据无碍——串口后端本就是 200ms 超时轮询读线程，`EnqueueBytes` 任意线程安全）。三层：
-  **`Backends/Rtt/JLinkNative.cs`**（internal，JLink_x64.dll 进程级常驻封装）——① **DLL 不打包、运行时三级定位**：注册表 `HKLM\SOFTWARE\SEGGER\J-Link` InstallPath → `SEGGER_JLINK_ROOT_PATH` → `Program Files\SEGGER\JLink*`（版本降序取最新），miss 抛含安装指引的 `DllNotFoundException`（SEGGER 许可不许第三方分发 DLL，顺带免去自包含单文件发布的原生库打包问题）；② **动态绑定**：`NativeLibrary.Load(全路径)` + `GetDelegateForFunctionPointer`（DllImport 应付不了运行时路径），委托存实例字段+静态根持防 GC；`ExecCommand` 手动 ASCII 编码+NUL（该路径无自动 charset 转换）；③ **弹窗抑制**：加载即 `JLINKARM_SetHookUnsecureDialog`（static unsafe 方法方法组转换——**lambda 字段初始化器不能处于 unsafe 上下文**，经工厂方法桥接）+ `HideDeviceSelectionDialog=1` 兜底，否则 DLL 出错弹自己的 MessageBox 卡线程；回调只做字符串转发（可能持 DLL 内部锁进来，取 `Gate`/碰 UI/抛异常 = 死锁/崩溃）；④ **进程级常驻不 Free**：DLL 有内部线程/TLS，FreeLibrary 时机稍错即残留线程跳进已释放代码（JLinkExe/pylink 均常驻），断开只 `JLINK_Close` 连接级复位；⑤ **`Gate` 全 DLL 串行锁**：API 非线程安全，Open/Read/Write/Close/Scan 共用一把。
-  **`Backends/Rtt/RttBackend.cs`**（`RttConfig`：器件/速度/接口 SWD-JTAG/通道 0-3/控制块地址 null=自动搜索/探针 S-N/复位开关）——Open 序列（**2026-10-07 对齐 pylink-square（RTT-T 底层库，真机验证充分）**）：参数校验（纯托管，不触 DLL）→ **占进程级单连接槽**（DLL 对二次 Connect 是**静默改连目标**而非报错，必须前置拦截并提示「先关闭现有 RTT 会话」）→ EnsureLoaded → **选探针**（`JLINKARM_EMU_SelectByUSBSN`/`SelectUSB(0)`）→ **`JLINKARM_OpenEx(日志回调,错误回调)`**（DLL 全程输出接 JLinkLog——现场排障可见；未选探针直接 Open 在部分驱动状态下失败/挂起，pylink 同款先选后开）→ `JLINKARM_TIF_Select`（DLL 编码 JTAG=0/SWD=1，与本应用配置相反）→ `JLINKARM_SetSpeed` → **器件名校验**（`JLINKARM_DEVICE_GetIndex`，可选导出；未知名前置拦截）→ `Device =` ExecCommand（**触发自动连接，必须在 TIF/速度之后**——否则用默认接口连错目标；弱语义：错误常延迟到 Connect 才暴露）→ `JLINKARM_IsConnected`==0 时 `JLINKARM_Connect`（阻塞秒级，UI 层 `Task.Run` 后台调用，照 SSH 模式）→ **复位+运行**（`SetResetDelay(10)+Reset()+Go()`，RTT-T「每次连接复位 MCU」同款默认可关——调试连接常令目标 halt，固件不跑 RTT 控制块无人初始化，是「连上没数据」的头号根因；-2 时自动搜索补一次 300ms 重试）→ RTT START（地址 null 传 **NULL**=pylink 自动搜索语义，指定则 16 字节结构；-2 = 控制块未找到，文案引导查固件 gc-sections/LTO 裁剪或手填地址）；读线程 10ms 空闲轮询/有数据连读排空（单批 4KB）；Write 部分写是常态（目标不读则下行缓冲满返回 0）——推进续写 + 锁外退避 2s 超时抛「目标机持续未读取」；Close 幂等（`Interlocked` 位——UI 关标签/读线程自关闭/Dispose 可能并发；读线程自身路径跳过 Join）+ 释放槽 + Gate 内 STOP+`JLINKARM_Close`；探针拔出读负码 → `ErrorOccurred`（错误码中文映射：-2/-256/-258/-259/-261）→ 自关闭；`Scan()`=`EMU_GetList(USB)` 枚举 S/N。
-  **`Backends/Rtt/JLinkNative.cs`（DLL 定位，2026-10-07 扩）**：**程序目录（JLink_x64.dll / JLinkARM.dll，RTT-T 自带 DLL 同模式——未装软件的机器把 DLL 复制到 exe 旁即可用）** → 注册表 HKLM/HKCU（含 32 位视图 WOW6432Node）→ `SEGGER_JLINK_ROOT_PATH` → Program Files / Program Files (x86) / %LOCALAPPDATA%\Programs 下 `SEGGER\JLink*`（倒序取最新）；弹窗抑制 hook、器件索引、复位三组导出改**可选绑定**（旧版 DLL 缺失时降级跳过不阻断加载）。
-  **UI**：`RttConnectDialog`（器件名必填 ASCII/接口/**探针 S/N 框**〔检测到单探针自动预填，多探针可改〕/速度可编辑下拉〔**坑：`IsEditable` ComboBox 的 `ComboBoxItem IsSelected` 不填充编辑框文本，须显式 `Text="4000"`**〕/通道/控制块地址 hex 容 0x 前缀 + **「连接后复位目标并运行」勾选默认开** + 探针状态行 `Loaded`→`Task.Run(Scan)` 回填〔首连会触发 DLL 定位加载，必须后台〕）；`TerminalSession.Rtt` 工厂照 Telnet 模式（无 resize）+ **下行写失败只警一次**（AppLog.Warn 首次标志——目标不消费 RTT 输入是常态故障，逐按键刷日志会淹没）；`TerminalWindow` 工具栏「+ RTT」+ `OpenRttDialog`（`await Task.Run(Open)`）+ **连接开始即 AppLog.Info 留痕**（器件/接口/速度/通道/SN/控制块/复位开关——v1.4.11 真机日志只在成败后记账，卡在连接中时一片空白无从判断）+ `ConnectSaved_Click` 三分支；`SavedSession` Kind="rtt" 字段复用（Host=器件/Port=速度/User=通道/AuthIndex=接口/KeyPath=控制块地址 + **新增可选 Notes 字段**存 "sn=xxx;reset=1"，旧 JSON 缺省空兼容）；`JLinkLog` 静态事件（静态构造先于任何加载订阅，防丢 hook 消息）→ App 启动订阅转 `AppLog.Warn("[J-Link] …")`。
-  **测试**：`scripts/RttCheck`（照 SshCheck 模式，csproj 经 `InternalsVisibleTo` 访问 JLinkNative 验证加载细节）——无硬件段（装 J-Link 软件即可，无需探针）：DLL 定位加载〔含未装时友好失败文案校验〕/弹窗抑制/Scan 无害性/参数校验 6 负路径/无探针连接负路径；硬件段 `--hw`：Open 全序列/读 3s/写/互斥槽/Close 幂等零 ErrorOccurred/槽释放后再连（DLL 常驻+Close 状态复位）/`--pull` 拔探针 ≤5s 自恢复。
-  **验证现状**：构建 0 错误 + 110 单测全绿；本机 `RttCheck` 无硬件段 ALL PASS + `scripts/uia-rtt-dlg.ps1` 端到端负路径全链路。**v1.4.11 真机日志复盘（2026-10-07，用户 app_20261007.log）**：终端窗开合 3 分钟内无任何 RTT 条目——连接开始无留痕（已补）、探针检测失败原因无留痕（已补）、实现与 pylink 参考序列多处偏差，v1.4.12 对齐。**v1.4.12 真机仍闪退 → v1.4.13 三缺陷修复（2026-10-07，开发机装 J-Link V9.82 后完整复现定位）**：① **`JLINKARM_EMU_GetList` 缓冲区语义错 = 闪退真根因**——该 API 填充 264 字节/项的 `JLINK_EMU_CONNECT_INFO` 结构体数组（SerialNumber@0），首版按 `uint[32]`（128 字节）传入，DLL 结构体写入越界破坏托管堆 → 数秒后 GC 在 coreclr 内访问违例（WER 事件：两次崩溃 coreclr.dll 同偏移 0x279913、0xC0000005，进程直接消失无任何托管日志/崩溃转储）；修复 = pylink 两步协议（先 `(host,NULL,0)` 取数、再按数分配 `count×264` 缓冲取结构体、偏移 0 读 SN）；② **unsecure hook 三处错**——签名实为 `int fn(title,msg,flags)` 返回按钮码（首版单参 void = DLL 读垃圾按钮码）、导出名 v9.82 实为 `JLINK_SetHookUnsecureDialog`（无 ARM 前缀）、安装时机 pylink 在 open 后；修复 = 三参 int 委托一律返回 DLG_BUTTON_NO(2) + 双名 TryBind + OpenEx 后安装，且加载期不再做任何 DLL 交互；③ **GUI 进程无探针 OpenEx 无限阻塞**——DLL 在 GUI 进程错误路径弹自家错误框，无消息泵线程上死等（对照实验实锤：pythonw+ctypes 同挂、console 同码秒回 `Cannot connect to the probe`；错误/警告输出回调 pre-open 注册也拦不住）；修复 = RTT Viewer 同款**探针前置检查**——Open 序列先枚举 USB 探针，零探针/SN 不在线毫秒级抛明确错误，绝不进 OpenEx（实测 11ms 报错）。附带：`JLINKARM_SetErrorOutHandler/SetWarnOutHandler` open 前注册（pylink 同款）。验证：开发机真 DLL（V9.82）三连测——对话框检测（Scan 真枚举）→ 连接负路径毫秒级报错 → 60s+ 存活零崩溃；v1.4.12 同场景两次 2s 内闪退（WER 留痕）对照。**真机段（探针+目标板）待硬件**：RttCheck `--hw` 硬件段 + UI 真机全链路。
-
-### 6.1 验收状态
-
-- [x] Telnet 协商器 9 单测全绿（107 总计）。
-- [x] ConPTY 本地终端实测：启动/回显/resize/销毁（探针程序，PowerShell 5.1）。
-- [ ] Telnet 连真实设备（嵌入式 telnetd）字符模式回显 —— **待人工真机**。
-- [ ] 终端窗「+ 本地」交互体验（字体渲染/中文/复制粘贴）—— **待人工**。
-- [x] RTT 负路径（未装 J-Link 软件机器）：`RttCheck` 无硬件段 ALL PASS + UIA 对话框/校验/失败弹窗/AppLog 全链路（2026-09-30 首验；2026-10-07 v1.4.12 对齐 pylink 序列后复验通过，含新增连接开始留痕）。
-- [ ] RTT 真机（装 J-Link 软件 + 探针 + 目标板，或 DLL 复制到程序目录）：`RttCheck --hw` 硬件段（连接/读/写/互斥槽/断开幂等/再连，`--pull` 拔探针自恢复）+ UI 真机全链路 —— **待真机（硬件不在开发机；v1.4.12 起真机日志含 DLL 全程输出与连接开始参数，可远程排障）**。
-- [ ] SFTP / 端口转发 —— **待需求确认后独立批次**（SFTP 为大 UI 件：双栏浏览 + 传输队列）。
-
-## 7. 风险与对策
-
-| 风险 | 对策 |
+**瀹炵幇璁板綍锛?026-09-19锛?*锛?- **Telnet**锛歚Backends/Telnet/TelnetNegotiator.cs`锛圧FC 854 IAC 鍗忓晢绾€昏緫锛? 鍗曟祴锛氶€忎紶/IAC IAC 杞箟/WILL-DO 搴旂瓟绛栫暐銆旀帴鍙楁湇鍔″櫒 ECHO+SGA銆佸叾浣欐嫆缁濄€?DO 鍏ㄦ嫆鍚?NAWS/瀛愬崗鍟嗕涪寮?鍗曞瓧鑺傚懡浠ゅ拷鐣?璺ㄥ寘鍒嗙墖鐘舵€佹満/杈撳嚭杞箟/鏁版嵁娴佹贩鍚堬級+ `TelnetBackend`锛堝悓鏋勪簨浠舵祦锛屽崗鍟嗗簲绛旇绾跨▼鐩村啓锛夛紱缁堢绐椼€? Telnet銆嶅璇濇 + 浼氳瘽鏍囩锛涗繚瀛樹細璇?Kind="telnet" 蹇€熻繛鎺ュ垎鏀€?- **鏈湴缁堢**锛歚App/Services/ConPtySession.cs`锛圕onPTY 绾?P/Invoke 闆朵緷璧栵紝瀹炵幇 IBusBackend锛沺wsh鈫抪owershell 鎺㈡祴鍏滃簳锛汦OF鈫掔瓑閫€鈫扵erminate鈫扖ancelSynchronousIo 鍙栨秷闃诲璇烩啋鏀?ConPTY 鐨勫叧闂『搴忋€?026-09-21 淇锛岃涓嬫潯銆曪級銆?*瀹炴祴閫氳繃**锛歅owerShell 鍚姩妯箙/鍛戒护鍥炴樉锛堝惈 VT 鐫€鑹诧級/resize/閿€姣佸叏閾捐矾銆?- **寮€绠卞嵆鐢紙2026-09-19 鐢ㄦ埛鍙嶉锛?*锛氱粓绔獥鎵撳紑鏃惰嫢涓昏繛鎺ユ湭寤虹珛锛?*鑷姩寮€涓€涓湰鍦扮粓绔爣绛?*骞惰仛鐒︹€斺€旀墦寮€缁堢鍗冲彲鐩存帴杈撳懡浠わ紝鏃犻渶鍏堣繛涓插彛/TCP/SSH 鎴栨壘銆? 鏈湴銆嶆寜閽紱鐢ㄦ埛涓诲姩鍏抽棴璇ユ爣绛惧悗涓嶉噸寮€銆傚啋鐑熼獙璇侊細榛樿閰嶇疆锛堢粓绔獥鍏筹級闆跺瓙杩涚▼锛涚粓绔獥寮€ + 鏈繛鎺?鈫?conhost+powershell 鑷姩鎷夎捣銆?- **ConPTY 韪╁潙璁板綍锛堥噸瑕侊級**锛氣憼 STARTUPINFOW 蹇呴』鍚叏閮?8 涓?DWORD锛堟槗婕?dwXSize/dwYSize锛夆€斺€旂己 2 涓娇 STARTUPINFOEXW=104鈮?12锛孋reateProcessW 鎶?**Win32 閿欒 87**锛涒憽 蹇呴』璁?`STARTF_USESTDHANDLES`锛堝榻?Pty.Net 鐢熶骇瀹炵幇锛夆€斺€斿惁鍒欏瓙杩涚▼**鍥炶惤鐖舵帶鍒跺彴**鑰岄潪鎸傛帴 ConPTY锛堢棁鐘讹細杈撳嚭婕忓埌瀹夸富杩涚▼鎺у埗鍙般€佺閬撳彧鏈?16 瀛楄妭鍒濆鍖栬浆涔夛級銆備袱澶勫潎宸插湪浠ｇ爜娉ㄩ噴涓爣娉ㄣ€?- **Win10 鍏崇粓绔獥姝婚攣淇锛?026-09-21锛岀敤鎴?Win10 澶嶇幇鏈烘寕璧?dump 瀹為敜锛?*锛氭牴鍥?= **Win10 `ClosePseudoConsole` 鍦ㄨ緭鍑虹閬撳瓨鍦ㄦ寕璧峰悓姝?ReadFile 鏃舵案涓嶈繑鍥?*锛堝井杞凡鐭ョ己闄凤紝Win11 宸蹭慨锛屾晠鏈満涓嶅鐜帮級鈥斺€擿Teardown` 鍘熷湪 UI 绾跨▼锛圱erminalWindow.OnClosing 鈫?Dispose 閾撅級鎵ц 鈫?UI 姘镐箙鍗℃銆備慨澶嶄袱灞傦細鈶?`Close()/Dispose()` 鏀?`Task.Run(Teardown)` 鍗歌浇绾跨▼姹狅紙`Interlocked` 闃?Close/Dispose 鍙岄噸鍏ラ槦锛夛紝UI 涓嶅啀鎵挎媴鎷嗗嵏椋庨櫓锛涒憽 鎷嗗嵏椤哄簭鍦?Terminate 鍚庢彃鍏ャ€宍CancelSynchronousIo` 鍙栨秷璇荤嚎绋嬮樆濉炶锛堣绾跨▼鑷 `_readTid`锛宍OpenThread(THREAD_TERMINATE)` 鍙栧彞鏌勶級鈫?`Join(1000)`銆嶅啀 `ClosePseudoConsole`銆?*dump 鍒嗘瀽鎻掓洸**锛氬師杞偍 flag锛坄MiniDumpNormal|IndirectlyReferencedMemory`锛夌己妯″潡鏁版嵁娈碉紝dotnet-dump/ClrMD 鍧囨壘涓嶅埌 CLR鈥斺€旀墭绠℃爤闈犳墜鍐?minidump 瑙ｆ瀽鍣紙绾跨▼涓婁笅鏂?RIP/RSP + VA鈫掓枃浠跺亸绉荤炕璇?+ 鏍?qword 鎵弿鍛戒腑妯″潡鍖洪棿锛夎鍑猴紱CrashLogger 杞偍 flag 鍚岃疆琛ュ己涓哄惈鏁版嵁娈?鍙ユ焺/绾跨▼淇℃伅锛堜綋绉粛鏁?MB 绾э級銆傛湰鏈猴紙Win11锛夊疄娴嬪紑鈫掑叧鈫掗噸寮€鈫掑叧涓よ疆骞插噣銆佹棤鎸傝捣鎶ュ憡銆?07 鍗曟祴鍏ㄧ豢锛?*Win10 澶嶇幇鏈洪獙璇侀€氳繃锛?026-09-30锛?*锛氱敤鎴峰湪鐩爣鏈哄疄娴?v1.4.3 鍙戝竷鐗堢粓绔彲姝ｅ父杩愯锛屾閿佷慨澶嶇湡鏈虹敓鏁堬紝姝ら」鍏抽棴銆?- **缁堢閰嶈壊鐜颁唬鍖栵紙2026-09-19 鐢ㄦ埛鍙嶉銆屼紭鍖?shell 鐣岄潰鏄剧ず鍜屾枃瀛楅厤鑹层€嶏級**锛歑Term.NET 榛樿绾粦搴曪紙#000000锛? 绾櫧瀛?+ VGA 鑰佽皟鑹叉澘 鈫?鏀?**Campbell 璋冭壊鏉匡紙Windows Terminal 榛樿 16 鑹诧級+ VS Code 寮忔煍鍜屾繁搴?*锛氳儗鏅?#1E1E1E銆佸墠鏅?#D4D4D4銆佸厜鏍?#AEAFAD銆侀€夊尯 #264F78锛岀粡 `TerminalOptions.Theme`锛坄ThemeOptions`锛変笅鍙戯紱瀹夸富 Border 鑳屾櫙涓庢湭杩炴帴閬僵鍚屾 #1E1E1E锛坄TerminalView.ThemeBackground` 甯搁噺鍗曚竴鏉ユ簮锛夈€?*鍚岃疆淇娼滆棌娓叉煋缂洪櫡**锛氬師 DrawRun 鎶?`GetFgColorMode()==0` 褰撱€岄粯璁よ壊銆嶁€斺€斿疄闄?mode 0 = **256 鑹茶皟鑹叉澘绱㈠紩**锛?56/257 鎵嶆槸榛樿鏍囪锛宮ode 1 = RGB 鐩村嚭锛夛紝瀵艰嚧鍏ㄩ儴绱㈠紩鑹诧紙鍚?30-37/90-97 SGR 鏍囧噯鑹层€?8;5;n 256 鑹诧級琚敾鎴愰粯璁ゅ墠鏅壊銆佺储寮曡儗鏅暣鐗囦笉鐢伙紱鏂板 `ResolveAttrColor`锛坢ode 鍒嗘祦 + 榛樿鏍囪 + `PaletteColor` 鏌ヨ〃锛夌粺涓€ DrawRun 涓?Block 鍏夋爣閲嶇敾涓よ矾銆傞獙璇侊細鏈湴 PowerShell 鏍囩鐏屽叆 16 鑹?Write-Host + 38;5;208 + 38;2 鐪熷僵 + 绮椾綋/涓嬪垝绾挎贩鎺掞紝鎴睆閫愯壊鑲夌溂鏍稿姝ｇ‘锛?07 鍗曟祴鍏ㄧ豢銆?- **缁堢瀛椾綋鏇存崲锛?026-09-19锛屼笁杞紨杩涳級**锛氣憼 鐢ㄦ埛鎸囧畾鑻辨枃 **Times New Roman**銆佷腑鏂?GB2312锛堟湰鏈烘棤 浠垮畫_GB2312/妤蜂綋_GB2312 鍛藉悕瀛椾綋 鈫?瀹嬩綋 SimSun锛孏B2312 瀛楃闆嗘爣鍑嗗瓧浣擄級銆?*娓叉煋鏋舵瀯闅忎箣璋冩暣**锛歍NR 鏄瘮渚嬪瓧浣擄紙i=3.9 / W=13.2 DIP @14pt锛夛紝鍘熴€屽悓灞炴€ц繛缁牸鍚堝苟涓轰竴鏉?FormattedText銆嶄細璁╁悗缁瓧绗︽寜鑷劧瀛楀鎺ㄨ繘銆佹紓鍑烘牸缃戔€斺€旀敼涓?*閫愭牸瀹氫綅缁樺埗** + `FormattedText` 缂撳瓨锛坘ey=鏂囨湰/绮?鏂?鍓嶆櫙鑹诧紝DPI 鍙樺寲娓呯┖锛夛紝鑳屾櫙浠嶆寜鍚屽簳鑹叉鍚堝苟銆傗憽 鏍煎鍒濈増鍙?max(TNR 绮椾綋 W鈮?3.7, SimSun 鍏ㄨ/2) 鈫?鐢ㄦ埛瀹炴祴鍙嶉銆屽崰浣嶅お瀹姐€嶁啋 闄?9 DIP 鍩哄噯 + 瓒呮牸瀛楃锛圡/W/m/w锛夋按骞冲帇缂┿€傗憿 鐢ㄦ埛浠嶄笉婊℃剰锛岃姹傘€屽弬鑰?VS Code 缁堢銆嶁€斺€斿嚭 TNR vs **Cascadia Mono**锛圴S Code 缁堢榛樿绛夊锛夊弻鏂规瀵规瘮鎴浘锛岀敤鎴烽€夊畾鍚庤€咃細**鏈€缁堟柟妗?= `Cascadia Mono, SimSun`**锛屾牸瀹?= max(鏁板瓧 0 瀛楀鈮?.2, 鍏ㄨ/2=7)锛屽瓧璺濆ぉ鐒跺潎鍖€銆侀浂鍘嬬缉銆佸榻愮簿鍑嗭紱閫愭牸缁樺埗涓庡帇缂╅€昏緫淇濈暀锛堢瓑瀹戒笅涓嶈Е鍙戯紝鐣欎綔闃插尽锛夈€傛暀璁細**缁堢缃戞牸鍦烘櫙浼樺厛绛夊瀛椾綋锛屾瘮渚嬪瓧浣撶殑鍘嬬缉/绋€鐤忔€庝箞璋冮兘鏈夊Ε鍗?*銆傞獙璇侊細绂诲睆鎴浘閫愰」鏍稿 + 鐪熷疄搴旂敤绐楀彛鎴浘澶嶆牳锛堥暱璺緞鍗曡涓嶆姌琛屻€佸瓧绗﹀潎鍖€锛夈€?- **Ctrl+C 澶辨晥鏍瑰洜涓庝慨澶嶏紙2026-09-19 鐢ㄦ埛鍙嶉銆宑trl+c 娌℃晥鏋溿€嶏級**锛歑Term.NET 鐨?`Selection.HasSelection` 鍦?*闆跺閫夊尯**锛堝崟鍑绘湭鎷栧姩锛夊悗涔熶负鐪燂紝涓?`GetSelectionText()` 瀵归浂瀹借繑鍥?anchor 澶?1 涓瓧绗︼紙闈炵┖锛夆€斺€旈紶鏍囩偣缁堢鑱氱劍涓€娆★紝`Ctrl+C` 灏辫銆屾湁閫夊尯鈫掑鍒躲€嶅垎鏀悶鎺夛紙杩樻薄鏌撳壀璐存澘 1 瀛楃锛夛紝`^C` 姘歌繙鍙戜笉鍑哄幓銆備慨澶嶄笁灞傦細鈶?榧犳爣鎶捣鏃堕浂瀹介€夊尯鍗?`ClearSelection`锛涒憽 `Ctrl+C` 澶嶅埗鍒嗘敮鍔犮€岄€夋枃闈炵┖銆嶅畧鍗紱鈶?**`CopySelection` 澶嶅埗鍚庢竻闄ら€夊尯**锛圵indows Terminal/xterm.js 鎯緥鈥斺€斿紩鎿庝笉浼氬洜鏂拌緭鍑?閿叆鑷姩娓呴€夊尯锛屾畫鐣欓€夊尯浼氳鍚庣画 Ctrl+C 姘歌繙杩涘鍒跺垎鏀級銆傚彟瀹炴祴婢勬竻锛歚\x03` 鍐欏叆 ConPTY 杈撳叆绠″湪 cmd / powershell(PSReadLine) 涓嬪潎鑳芥甯镐腑鏂繍琛屼腑鍛戒护锛坧ing -t锛変笌鍙栨秷琛岀紪杈戯紝鍚庣閾捐矾鏃犻棶棰樸€傞獙璇侊細WPF harness 瀵?TerminalView 娉ㄥ叆鐪熷疄 Ctrl+C 閿嚮锛圫endInput锛夆€斺€旀棤閫夊尯鍙?03 / 鏈夐€夊尯澶嶅埗涓旈€夊尯鍗虫竻 / 澶嶅埗鍚庡啀鎸夊彂 03锛屽叏杩囥€?- **缁堢浜や簰浣撻獙淇锛?026-09-25 鐢ㄦ埛鍙嶉銆岄€変腑涓嶈兘 Ctrl+C/V銆乀UI 涓嶈兘婊戝姩銆嶏級**锛氫笁涓牴鍥犫€斺€斺憼 搴旂敤寮€榧犳爣璺熻釜锛坴im/htop锛夊悗榧犳爣浜嬩欢**鍏ㄩ噺杞彂缁欏簲鐢?*锛屾湰鍦伴€夊尯閫昏緫涓嶈Е鍙戯紝閫変笉涓婂瓧鑷劧鏃犱粠澶嶅埗锛涒憽 `Ctrl+V` 浠庢湭缁戝畾绮樿创锛堝師钀藉埌瀛楃璺緞鍙?`\x16`锛夛紱鈶?澶囧睆+鏃犻紶鏍囪窡韪椂婊氳疆**鐩存帴涓㈠純**锛堜唬鐮?`return`锛夛紝less/man/vim 鍏抽紶鏍囦笅婊氳疆绛変簬搴熺殑銆備慨澶嶏紙鍏ㄥ湪 `TerminalView`锛屽榻?Windows Terminal/xterm 鎯緥锛夛細**Shift+宸﹂敭鎷栧姩寮哄埗鏂囧瓧閫夋嫨**锛坄_forceSelecting` 鏍囪缁曡繃璺熻釜锛夈€?*Shift+鍙抽敭寮哄埗寮逛笂涓嬫枃鑿滃崟**锛堣窡韪椂鍙抽敭浜嬩欢鍘熸湰涔熻鍚冩帀锛夛紱**Ctrl+V 绮樿创**锛堝師 `\x16` literal-next 鏋佸皯浣跨敤锛孋trl+Shift+V 缁堢鏍囧噯閿繚鐣欙級锛涘灞?鏃犺窡韪粴杞?*妯℃嫙 Up/Down 閿?*锛堟瘡鏍?3 琛岋級锛?*Shift+婊氳疆**濮嬬粓缁堢鑷鐞嗏€斺€旈潪澶囧睆寮哄埗婊氬洖婊?/ 澶囧睆妯℃嫙 PgUp/PgDn 鏁撮〉缈诲姩锛涘悓杞?*琛ュ叏榧犳爣杞彂缂哄彛**锛氬乏閿?Down/Up/Drag锛圖rag 鎸?ButtonEvent/AnyEvent 妯″紡锛夈€佸彸閿?Down/Up锛堝師瀹炵幇鍙浆鍙戞粴杞級銆傛粴杞鏍兼粴鍔紙|Delta|>120锛夋寜鏍兼暟灞曞紑鍙戦€併€傞獙璇侊細鏋勫缓 0 閿欒锛涚敤鎴锋湰鍦扮粓绔疄娴?vim/less 婊氳疆涓?Shift 閫夋嫨澶嶅埗纭銆?- **IME 鍊欓€夋璺熼殢鍏夋爣锛?026-09-25 鐢ㄦ埛鍙嶉銆岃緭涓枃鏃堕瑙堣鍥哄畾鏄剧ず鍦ㄦ樉绀哄櫒宸︿笂瑙掋€嶏紱2026-09-26 瀹氱锛?*锛氭牴鍥?= TerminalView 鏄嚜缁樻帶浠讹紝璧?WPF 榛樿 TSF 鏂囨湰瀛樺偍鏃惰緭鍏ユ硶鏌ヤ笉鍒板厜鏍囩煩褰紙鑷粯鎺т欢娌℃湁 TextView锛夛紝鍊欓€夋/棰勭紪杈戜覆灏变涪灞忓箷 (0,0)銆?*涓よ疆澶辫触鏁欒**锛氣憼 IMM32 閽╁瓙璺緞锛圚wndSource 鎸?`WM_IME_STARTCOMPOSITION` 绛?+ `ImmSetCompositionWindow`/`ImmSetCandidateWindow`锛夊绾?TSF 杈撳叆娉曪紙寰俊杈撳叆娉曪級鏃犳晥鈥斺€斿畠鏍规湰涓嶇粡鐢?IMM 璁句綅锛涒憽 鎸?LightTextEditorPlus 閰嶆柟鍔?`InputMethod.SetIsInputMethodSuspended=true` 璧?IMM/AIMM 妗ユ帴锛屽弽鑰屾妸 WPF 鐨勬枃鏈彁浜ら摼璺暣涓帎鏂紙涓枃瀹屽叏杈撲笉浜嗭級銆?*鏈€缁堟柟妗?= 鍐呰仈棰勭紪杈戦殣钘?TextBox锛坸term.js 鍚屾鏋舵瀯 + Windows Terminal 瑙傛劅锛?026-09-26 涓夎疆瀹氱锛?*锛歚TerminalView` 鍩虹被 `FrameworkElement`鈫抈Grid`锛屽唴钘?TextBox锛堟棤杈规鏃犲唴杈硅窛銆両sHitTestVisible=false銆?*鑳屾櫙 null + CaretBrush 閫忔槑**鈥斺€旂┖妗嗗畬鍏ㄤ笉鍙涓嶆尅缁堢鍏夋爣锛夋壙鎺ラ敭鐩樼劍鐐光€斺€擶PF TextBox 鑷甫瀹屾暣 TSF/IMM 鏀寔锛岃緭鍏ユ硶鍊欓€夋鐢?WPF 閿氬畾鍒版鍐呭厜鏍囷紱妗嗕綋姣忓抚鍙犲埌缁堢娓告爣鏍间笂銆?*瀹藉彇鍒板彸缂?*锛圤nRender 鏈熬 `UpdateImeBoxPosition`锛夛紝缁勫悎鏈?IME 鍦ㄦ鏂囨。閲岀敾鐨?*棰勭紪杈戜覆锛堝甫涓嬪垝绾匡級鍗充互缁堢鍚屾瀛椾綋/鍓嶆櫙鑹插唴鑱旀樉绀哄湪鍏夋爣琛?*锛屽€欓€夋潯绱ц窡鍏朵笅锛堝榻?Windows Terminal 瑙傛劅锛夛紱缁勫悎鏈熺粓绔嚜宸辩殑鍏夋爣璁╀綅锛圧enderCursor 璺宠繃锛夛紝鍓嶆櫙鑹查殢涓婚锛堝惈 OSC 10 杩愯鏃舵敼鑹诧級銆?*绗笁涓潙锛堢敤鎴锋埅鍥惧弽棣堛€岃摑鑹茶緭鍏ユ銆嶏級**锛歐PF 缁勫悎鏈熺敤 `SelectionBrush`锛堥粯璁ょ郴缁熼珮浜摑锛夌敾棰勭紪杈戜覆鑳屾櫙鈥斺€斾寒鑹插簲鐢ㄩ噷涓嶆樉鐪笺€佹繁鑹茬粓绔笂鎴愯摑鍧楋紱`SelectionBrush=Transparent` + `SelectionTextBrush` 姣忓抚璺熺粓绔墠鏅嵆杩樺師 WT 寮忋€屼笅鍒掔嚎瑁稿瓧銆嶃€?*绗洓涓潙锛圕laude Code 鍦烘櫙钃濆潡澶嶅彂锛岀函 PS 涓嶇幇鈥斺€斿儚绱犳壂鎻?0/34200 钃濈礌瀹炶瘉淇锛?*锛歍UI 搴旂敤楂橀閲嶇粯璁╁紩鎿庡厜鏍囨姈鍔紝妗嗚窡鐫€鎸紙姣忓抚 UpdateImeBoxPosition锛夆啋 杈撳叆娉曡涓虹粍鍚堥敋鐐逛笉绋筹紝寮冪敤鍐呰仈娓叉煋銆佹敼鐢?*鑷繁鐨勮摑鑹叉偓娴潰鏉?*锛堝井淇¤緭鍏ユ硶锛夛紱`UpdateImeBoxPosition` 寮€澶?`if (_imeComposing) return;` **缁勫悎鏈熷喕缁撻敋鐐?*鍗虫仮澶嶅唴鑱旓紙缁勫悎寮€濮嬫椂妗嗗凡鍦ㄦ父鏍囧锛屽喕缁撳埌缁撴潫锛夈€傝緭鍏ュ垎娴侊細鐩存墦瀛楃 `PreviewTextInput` 鐩村彂瀵圭锛坔andled 闃绘柇鎻掑叆锛屾鍐呬笉瀛樺瓧锛夛紱IME 涓婂睆鏂囧瓧 `TextChanged` 杞彂鍚庢竻绌猴紝棰勭紪杈戦樁娈碉紙`_imeComposing`锛変笉杞彂鈥斺€旂粍鍚堢姸鎬佺敱 `TextCompositionManager` 涓変釜闄勫姞浜嬩欢锛坔andledEventsToo锛? `WM_IME_START/ENDCOMPOSITION` 绐楀彛閽╁瓙鍙岄€氶亾璺熻釜锛堟秷鎭彧鍝嶅簲鏈鎻＄劍鐐癸紝澶氭爣绛惧叡浜?HWND 鏃犱覆鎵帮級锛涚壒娈婇敭/蹇嵎閿粛璧板師 `OnPreviewKeyDown`锛圥review 闅ч亾鍏堜簬闅愯棌妗嗭紝鍘熼€昏緫闆舵敼鍔級锛涚劍鐐硅涔変笉鍙橈紙`Focus()` new 杞粰闅愯棌妗嗭紝瀹夸富 `FocusActiveView` 鏃犳劅锛夈€?*绗簩涓潙锛堢敤鎴峰疄娴嬨€屽€欓€夋浣嶇疆瀵逛簡浣嗕腑鏂囦笂涓嶄簡灞忋€? 璇婃柇鏃ュ織瀹為敜锛?*锛氬井淇¤緭鍏ユ硶涓婂睆鏃跺簭 = 鏈€缁堟枃瀛楀厛杩涙锛圱extChanged 瑙﹀彂鏃?`_imeComposing` 浠?true锛屽啿鍒疯瀹堝崼鎷︿笅锛夆啋 缁勫悎缁撴潫浜嬩欢锛圥reviewTextInput Final / WM_IME_ENDCOMPOSITION锛夋櫄鍑犳绉掓墠鍒扳€斺€斿浣嶅悗娌′汉琛ュ啿鍒凤紝鏂囧瓧婊炵暀妗嗗唴鍙戜笉鍑哄幓锛堢函 PS 鎻愮ず绗︿笅鍋跺彂椤哄簭鐩稿弽鎵嶇宸ч€氳繃锛夈€備慨澶嶏細Final/ENDCOMPOSITION 澶嶄綅鍚?`ScheduleImeFlush()` 浠?**Background 浼樺厛绾ф帹杩熷啿鍒?*鈥斺€旂瓑 TSF 瀵规枃妗ｇ殑鍐欏叆鍦ㄦ湰杞緭鍏ュ垎娲惧唴钀藉畾鍐嶅彇妗嗗唴鏈€缁堟枃瀛楋紝涓ょ鏃跺簭閮芥纭笖涓嶄細璇彂棰勭紪杈戜覆锛堝啿鍒蜂笌 TextChanged 璺緞鍏堝埌鍏堝彂銆佸箓绛夛級銆傞獙璇侊紙SendInput 椹卞姩鐪熻緭鍏ユ硶绔埌绔紝鎴睆鑲夌溂鏍稿锛夛細寰俊杈撳叆娉曟嫾闊?"nihao" 缁勫悎鈥斺€旈缂栬緫涓嬪垝绾夸覆鐢诲湪缁堢鍏夋爣澶?+ 鍊欓€夋潯绱ц窡杈撳叆琛屼笅鏂癸紙绐楀彛鍐咃級锛涚┖鏍间笂灞忊€斺€斻€屼綘濂姐€嶆纭惤鍒?PowerShell 鎻愮ず绗︼紙鍚椂搴忎慨澶嶅悗澶嶉獙锛夛紱ASCII "test99" 鐩存墦閾捐矾鍥炲綊閫氳繃銆?*绗簲涓潙锛?026-09-26 鐢ㄦ埛鍐嶆姤銆岃繕鏄湁钃濊壊鐨勮緭鍏ユ銆嶁€斺€旂函 PS 绌洪棽鎬佸嵆鐜帮紝涓庣粍鍚堟棤鍏筹級**锛氳繖涓父椹昏摑妗嗘牴鍥犳牴鏈笉鍦ㄨ緭鍏ユ硶鈥斺€擜pp.xaml 鐨勫叏灞€闅愬紡 `Style TargetType="TextBox"`锛堝渾瑙掓ā鏉?+ `IsKeyboardFocusWithin` 瑙﹀彂鍣ㄦ妸妯℃澘 `Bd` Border 鐩存敼 AccentBrush 钃濊壊 1.5px锛屽彟甯?MinHeight=28/Padding=6,4锛夛紝`new TextBox()` 榛樿鍚冮殣寮忔牱寮忥紝鑰岃Е鍙戝櫒鏀圭殑鏄?*妯℃澘鍐?Border**锛屾涓婂眬閮ㄨ `BorderThickness=0`/`FocusVisualStyle=null` 鍏ㄦ嫤涓嶄綇 鈫?闅愯棌妗嗕竴鏈夐敭鐩樼劍鐐瑰嵆鏄惧舰鎴愯摑鑹插渾瑙掓锛堢┖闂叉亽瀹氥€佺粍鍚?鍙栨秷/鑻辨枃妯″紡/澶辩劍鍏ㄤ笉鍙樷€斺€斾簲闃舵鍍忕礌鎵弿 bbox 鎭掔瓑浜庢杈圭晫锛?66 钃濈礌锛夈€備慨澶?= BuildImeBox 閲?`Style = null` 鍓ョ闅愬紡鏍峰紡锛堜竴琛岋級锛涘妫€ 966鈫?4锛堜綑閲忎负绐楀彛宸︾紭闈欐€佹潅鑹诧紝涓庢鏃犲叧锛? 鎴浘鑲夌溂鏍稿銆?*鎺掗殰鏁欒**锛氳摑妗?bbox 绮剧‘璐村悎銆岃嚜寤烘帶浠剁殑杈圭晫 + 鐒︾偣鎬佹亽瀹氥€嶆椂鍏堟煡鑷鍏ㄥ眬鏍峰紡锛堥殣寮忔牱寮?妯℃澘瑙﹀彂鍣級锛屽埆鍏堣禆杈撳叆娉曗€斺€旀湰杞墠鍥涗釜鍧戝叏鍦ㄩ槻杈撳叆娉曪紝鐪熷嚩鏄嚜瀹舵牱寮忋€?- **缁堢绐?鍥捐〃绐楃嫭绔嬪寲 + 涓荤獥鍏ュ彛鏀规寜閽紙2026-09-26 鐢ㄦ埛鎶ャ€屽惎鍔ㄧ粓绔晫闈㈡垨娉㈠舰鐣岄潰浼氬己鍒舵媺璧蜂富绐椼€嶏級**锛氭牴鍥?= 涓ょ獥鍒涘缓鏃惰浜?`Owner = 涓荤獥`鈥斺€擶in32 浠庡睘绐楀彛锛坥wned window锛夎缁戣繘涓荤獥鐨勬縺娲荤粍锛氣憼 浠庡睘绐椾笉鑳借劚绂婚殣钘?鏈€灏忓寲鐨勪富绐楀崟鐙樉绀猴紝`Show()` 浠庡睘绐椾細鎶婁富绐楀己鍒跺甫鍑烘潵锛圵PF 閲岀敋鑷崇粰鏈?Show 杩囩殑绐楀彛璁?Owner 鐩存帴鎶涘紓甯革紝褰撳勾 XAML 鍒濆鍖栨湡宕╂簝鍗虫璇箟锛夛紱鈶?浠庡睘绐楁案杩滄诞浜庝富绐椾箣涓婏紙Z 搴忕粦瀹氾級锛涒憿 婵€娲讳粠灞炵獥浼氳繛甯︽縺娲讳富绐椼€佷富绐楁渶灏忓寲/杩樺師鑱斿姩浠庡睘绐椻€斺€斾笁鏉″悎璧锋潵鍗炽€屾柊绐椾笉鐙珛銆佸己鍒舵媺璧蜂富绐椼€嶃€備慨澶嶏細`ChartWindow`/`TerminalWindow` 涓嶅啀璁?Owner锛屾垚涓轰笌涓荤獥骞崇骇鐨勭嫭绔嬮《灞傜獥鍙ｏ紙浠诲姟鏍忕嫭绔嬫潯鐩€佸彲鍘嬪埌涓荤獥涔嬩笅/鎷栧埌鍙︿竴鍙版樉绀哄櫒锛夈€傚悓杞敤鎴疯姹傛妸涓荤獥椤堕儴銆屾尝褰€嶃€岀粓绔€嶅閫夋鏀?*鎸夐挳**锛氱偣鎸夋墦寮€锛堝凡寮€鍒?`Activate()` 甯﹀埌鍓嶅彴锛夛紝鍏抽棴鍙蛋绐楀彛 X锛涘師鍏堝閫夋鐨?Checked/Unchecked 浜嬩欢閾剧Щ闄わ紝鏄鹃殣缁熶竴鐢?`ShowWavePanel`/`ShowTerminalPanel` 灞炴€у彉鍖栭┍鍔紙`MainWindow.OnVmPropertyChanged` 鍒嗗彂 鈫?`ApplyWavePanelState`/`ApplyTerminalPanelState`锛涚獥鍙?X 鐨勫欢杩熷洖鍐?false 鈫?閿€姣佸垎鏀笉鍙橈級锛屻€屼笂娆￠€€鍑烘椂寮€鐫€鍒欓殢鍚姩鎵撳紑銆嶇殑璁板繂琛屼负淇濈暀銆傛瀯寤?0 閿欒銆?07 鍗曟祴鍏ㄧ豢銆?- **RTT 浼氳瘽锛?026-09-30锛孲EGGER Real-Time Transfer / J-Link 鎺㈤拡锛岀洰鏍囧満鏅?= 鍥轰欢宸查泦鎴?SEGGER RTT 鐨勯浂 UART 楂橀€熸棩蹇?浜や簰锛?*锛氱粓绔獥銆? RTT銆嶇鍥涚被鐙珛浼氳瘽锛宍IBusBackend` 鍚屾瀯鎺ュ叆锛堣疆璇㈡媺鏁版嵁鏃犵鈥斺€斾覆鍙ｅ悗绔湰灏辨槸 200ms 瓒呮椂杞璇荤嚎绋嬶紝`EnqueueBytes` 浠绘剰绾跨▼瀹夊叏锛夈€備笁灞傦細
+  **`Backends/Rtt/JLinkNative.cs`**锛坕nternal锛孞Link_x64.dll 杩涚▼绾у父椹诲皝瑁咃級鈥斺€斺憼 **DLL 涓嶆墦鍖呫€佽繍琛屾椂涓夌骇瀹氫綅**锛氭敞鍐岃〃 `HKLM\SOFTWARE\SEGGER\J-Link` InstallPath 鈫?`SEGGER_JLINK_ROOT_PATH` 鈫?`Program Files\SEGGER\JLink*`锛堢増鏈檷搴忓彇鏈€鏂帮級锛宮iss 鎶涘惈瀹夎鎸囧紩鐨?`DllNotFoundException`锛圫EGGER 璁稿彲涓嶈绗笁鏂瑰垎鍙?DLL锛岄『甯﹀厤鍘昏嚜鍖呭惈鍗曟枃浠跺彂甯冪殑鍘熺敓搴撴墦鍖呴棶棰橈級锛涒憽 **鍔ㄦ€佺粦瀹?*锛歚NativeLibrary.Load(鍏ㄨ矾寰?` + `GetDelegateForFunctionPointer`锛圖llImport 搴斾粯涓嶄簡杩愯鏃惰矾寰勶級锛屽鎵樺瓨瀹炰緥瀛楁+闈欐€佹牴鎸侀槻 GC锛沗ExecCommand` 鎵嬪姩 ASCII 缂栫爜+NUL锛堣璺緞鏃犺嚜鍔?charset 杞崲锛夛紱鈶?**寮圭獥鎶戝埗**锛氬姞杞藉嵆 `JLINKARM_SetHookUnsecureDialog`锛坰tatic unsafe 鏂规硶鏂规硶缁勮浆鎹⑩€斺€?*lambda 瀛楁鍒濆鍖栧櫒涓嶈兘澶勪簬 unsafe 涓婁笅鏂?*锛岀粡宸ュ巶鏂规硶妗ユ帴锛? `HideDeviceSelectionDialog=1` 鍏滃簳锛屽惁鍒?DLL 鍑洪敊寮硅嚜宸辩殑 MessageBox 鍗＄嚎绋嬶紱鍥炶皟鍙仛瀛楃涓茶浆鍙戯紙鍙兘鎸?DLL 鍐呴儴閿佽繘鏉ワ紝鍙?`Gate`/纰?UI/鎶涘紓甯?= 姝婚攣/宕╂簝锛夛紱鈶?**杩涚▼绾у父椹讳笉 Free**锛欴LL 鏈夊唴閮ㄧ嚎绋?TLS锛孎reeLibrary 鏃舵満绋嶉敊鍗虫畫鐣欑嚎绋嬭烦杩涘凡閲婃斁浠ｇ爜锛圝LinkExe/pylink 鍧囧父椹伙級锛屾柇寮€鍙?`JLINK_Close` 杩炴帴绾у浣嶏紱鈶?**`Gate` 鍏?DLL 涓茶閿?*锛欰PI 闈炵嚎绋嬪畨鍏紝Open/Read/Write/Close/Scan 鍏辩敤涓€鎶娿€?  **`Backends/Rtt/RttBackend.cs`**锛坄RttConfig`锛氬櫒浠?閫熷害/鎺ュ彛 SWD-JTAG/閫氶亾 0-3/鎺у埗鍧楀湴鍧€ null=鑷姩鎼滅储/鎺㈤拡 S-N/澶嶄綅寮€鍏筹級鈥斺€擮pen 搴忓垪锛?*2026-10-07 瀵归綈 pylink-square锛圧TT-T 搴曞眰搴擄紝鐪熸満楠岃瘉鍏呭垎锛?*锛夛細鍙傛暟鏍￠獙锛堢函鎵樼锛屼笉瑙?DLL锛夆啋 **鍗犺繘绋嬬骇鍗曡繛鎺ユЫ**锛圖LL 瀵逛簩娆?Connect 鏄?*闈欓粯鏀硅繛鐩爣**鑰岄潪鎶ラ敊锛屽繀椤诲墠缃嫤鎴苟鎻愮ず銆屽厛鍏抽棴鐜版湁 RTT 浼氳瘽銆嶏級鈫?EnsureLoaded 鈫?**閫夋帰閽?*锛坄JLINKARM_EMU_SelectByUSBSN`/`SelectUSB(0)`锛夆啋 **`JLINKARM_OpenEx(鏃ュ織鍥炶皟,閿欒鍥炶皟)`**锛圖LL 鍏ㄧ▼杈撳嚭鎺?JLinkLog鈥斺€旂幇鍦烘帓闅滃彲瑙侊紱鏈€夋帰閽堢洿鎺?Open 鍦ㄩ儴鍒嗛┍鍔ㄧ姸鎬佷笅澶辫触/鎸傝捣锛宲ylink 鍚屾鍏堥€夊悗寮€锛夆啋 `JLINKARM_TIF_Select`锛圖LL 缂栫爜 JTAG=0/SWD=1锛屼笌鏈簲鐢ㄩ厤缃浉鍙嶏級鈫?`JLINKARM_SetSpeed` 鈫?**鍣ㄤ欢鍚嶆牎楠?*锛坄JLINKARM_DEVICE_GetIndex`锛屽彲閫夊鍑猴紱鏈煡鍚嶅墠缃嫤鎴級鈫?`Device =` ExecCommand锛?*瑙﹀彂鑷姩杩炴帴锛屽繀椤诲湪 TIF/閫熷害涔嬪悗**鈥斺€斿惁鍒欑敤榛樿鎺ュ彛杩為敊鐩爣锛涘急璇箟锛氶敊璇父寤惰繜鍒?Connect 鎵嶆毚闇诧級鈫?`JLINKARM_IsConnected`==0 鏃?`JLINKARM_Connect`锛堥樆濉炵绾э紝UI 灞?`Task.Run` 鍚庡彴璋冪敤锛岀収 SSH 妯″紡锛夆啋 **澶嶄綅+杩愯**锛坄SetResetDelay(10)+Reset()+Go()`锛孯TT-T銆屾瘡娆¤繛鎺ュ浣?MCU銆嶅悓娆鹃粯璁ゅ彲鍏斥€斺€旇皟璇曡繛鎺ュ父浠ょ洰鏍?halt锛屽浐浠朵笉璺?RTT 鎺у埗鍧楁棤浜哄垵濮嬪寲锛屾槸銆岃繛涓婃病鏁版嵁銆嶇殑澶村彿鏍瑰洜锛?2 鏃惰嚜鍔ㄦ悳绱㈣ˉ涓€娆?300ms 閲嶈瘯锛夆啋 RTT START锛堝湴鍧€ null 浼?**NULL**=pylink 鑷姩鎼滅储璇箟锛屾寚瀹氬垯 16 瀛楄妭缁撴瀯锛?2 = 鎺у埗鍧楁湭鎵惧埌锛屾枃妗堝紩瀵兼煡鍥轰欢 gc-sections/LTO 瑁佸壀鎴栨墜濉湴鍧€锛夛紱璇荤嚎绋?10ms 绌洪棽杞/鏈夋暟鎹繛璇绘帓绌猴紙鍗曟壒 4KB锛夛紱Write 閮ㄥ垎鍐欐槸甯告€侊紙鐩爣涓嶈鍒欎笅琛岀紦鍐叉弧杩斿洖 0锛夆€斺€旀帹杩涚画鍐?+ 閿佸閫€閬?2s 瓒呮椂鎶涖€岀洰鏍囨満鎸佺画鏈鍙栥€嶏紱Close 骞傜瓑锛坄Interlocked` 浣嶁€斺€擴I 鍏虫爣绛?璇荤嚎绋嬭嚜鍏抽棴/Dispose 鍙兘骞跺彂锛涜绾跨▼鑷韩璺緞璺宠繃 Join锛? 閲婃斁妲?+ Gate 鍐?STOP+`JLINKARM_Close`锛涙帰閽堟嫈鍑鸿璐熺爜 鈫?`ErrorOccurred`锛堥敊璇爜涓枃鏄犲皠锛?2/-256/-258/-259/-261锛夆啋 鑷叧闂紱`Scan()`=`EMU_GetList(USB)` 鏋氫妇 S/N銆?  **`Backends/Rtt/JLinkNative.cs`锛圖LL 瀹氫綅锛?026-10-07 鎵╋級**锛?*绋嬪簭鐩綍锛圝Link_x64.dll / JLinkARM.dll锛孯TT-T 鑷甫 DLL 鍚屾ā寮忊€斺€旀湭瑁呰蒋浠剁殑鏈哄櫒鎶?DLL 澶嶅埗鍒?exe 鏃佸嵆鍙敤锛?* 鈫?娉ㄥ唽琛?HKLM/HKCU锛堝惈 32 浣嶈鍥?WOW6432Node锛夆啋 `SEGGER_JLINK_ROOT_PATH` 鈫?Program Files / Program Files (x86) / %LOCALAPPDATA%\Programs 涓?`SEGGER\JLink*`锛堝€掑簭鍙栨渶鏂帮級锛涘脊绐楁姂鍒?hook銆佸櫒浠剁储寮曘€佸浣嶄笁缁勫鍑烘敼**鍙€夌粦瀹?*锛堟棫鐗?DLL 缂哄け鏃堕檷绾ц烦杩囦笉闃绘柇鍔犺浇锛夈€?  **UI**锛歚RttConnectDialog`锛堝櫒浠跺悕蹇呭～ ASCII/鎺ュ彛/**鎺㈤拡 S/N 妗?*銆旀娴嬪埌鍗曟帰閽堣嚜鍔ㄩ濉紝澶氭帰閽堝彲鏀广€?閫熷害鍙紪杈戜笅鎷夈€?*鍧戯細`IsEditable` ComboBox 鐨?`ComboBoxItem IsSelected` 涓嶅～鍏呯紪杈戞鏂囨湰锛岄』鏄惧紡 `Text="4000"`**銆?閫氶亾/鎺у埗鍧楀湴鍧€ hex 瀹?0x 鍓嶇紑 + **銆岃繛鎺ュ悗澶嶄綅鐩爣骞惰繍琛屻€嶅嬀閫夐粯璁ゅ紑** + 鎺㈤拡鐘舵€佽 `Loaded`鈫抈Task.Run(Scan)` 鍥炲～銆旈杩炰細瑙﹀彂 DLL 瀹氫綅鍔犺浇锛屽繀椤诲悗鍙般€曪級锛沗TerminalSession.Rtt` 宸ュ巶鐓?Telnet 妯″紡锛堟棤 resize锛? **涓嬭鍐欏け璐ュ彧璀︿竴娆?*锛圓ppLog.Warn 棣栨鏍囧織鈥斺€旂洰鏍囦笉娑堣垂 RTT 杈撳叆鏄父鎬佹晠闅滐紝閫愭寜閿埛鏃ュ織浼氭饭娌★級锛沗TerminalWindow` 宸ュ叿鏍忋€? RTT銆? `OpenRttDialog`锛坄await Task.Run(Open)`锛? **杩炴帴寮€濮嬪嵆 AppLog.Info 鐣欑棔**锛堝櫒浠?鎺ュ彛/閫熷害/閫氶亾/SN/鎺у埗鍧?澶嶄綅寮€鍏斥€斺€攙1.4.11 鐪熸満鏃ュ織鍙湪鎴愯触鍚庤璐︼紝鍗″湪杩炴帴涓椂涓€鐗囩┖鐧芥棤浠庡垽鏂級+ `ConnectSaved_Click` 涓夊垎鏀紱`SavedSession` Kind="rtt" 瀛楁澶嶇敤锛圚ost=鍣ㄤ欢/Port=閫熷害/User=閫氶亾/AuthIndex=鎺ュ彛/KeyPath=鎺у埗鍧楀湴鍧€ + **鏂板鍙€?Notes 瀛楁**瀛?"sn=xxx;reset=1"锛屾棫 JSON 缂虹渷绌哄吋瀹癸級锛沗JLinkLog` 闈欐€佷簨浠讹紙闈欐€佹瀯閫犲厛浜庝换浣曞姞杞借闃咃紝闃蹭涪 hook 娑堟伅锛夆啋 App 鍚姩璁㈤槄杞?`AppLog.Warn("[J-Link] 鈥?)`銆?  **娴嬭瘯**锛歚scripts/RttCheck`锛堢収 SshCheck 妯″紡锛宑sproj 缁?`InternalsVisibleTo` 璁块棶 JLinkNative 楠岃瘉鍔犺浇缁嗚妭锛夆€斺€旀棤纭欢娈碉紙瑁?J-Link 杞欢鍗冲彲锛屾棤闇€鎺㈤拡锛夛細DLL 瀹氫綅鍔犺浇銆斿惈鏈鏃跺弸濂藉け璐ユ枃妗堟牎楠屻€?寮圭獥鎶戝埗/Scan 鏃犲鎬?鍙傛暟鏍￠獙 6 璐熻矾寰?鏃犳帰閽堣繛鎺ヨ礋璺緞锛涚‖浠舵 `--hw`锛歄pen 鍏ㄥ簭鍒?璇?3s/鍐?浜掓枼妲?Close 骞傜瓑闆?ErrorOccurred/妲介噴鏀惧悗鍐嶈繛锛圖LL 甯搁┗+Close 鐘舵€佸浣嶏級/`--pull` 鎷旀帰閽?鈮?s 鑷仮澶嶃€?  **楠岃瘉鐜扮姸**锛氭瀯寤?0 閿欒 + 110 鍗曟祴鍏ㄧ豢锛涙湰鏈?`RttCheck` 鏃犵‖浠舵 ALL PASS + `scripts/uia-rtt-dlg.ps1` 绔埌绔礋璺緞鍏ㄩ摼璺€?*v1.4.11 鐪熸満鏃ュ織澶嶇洏锛?026-10-07锛岀敤鎴?app_20261007.log锛?*锛氱粓绔獥寮€鍚?3 鍒嗛挓鍐呮棤浠讳綍 RTT 鏉＄洰鈥斺€旇繛鎺ュ紑濮嬫棤鐣欑棔锛堝凡琛ワ級銆佹帰閽堟娴嬪け璐ュ師鍥犳棤鐣欑棔锛堝凡琛ワ級銆佸疄鐜颁笌 pylink 鍙傝€冨簭鍒楀澶勫亸宸紝v1.4.12 瀵归綈銆?*v1.4.12 鐪熸満浠嶉棯閫€ 鈫?v1.4.13 涓夌己闄蜂慨澶嶏紙2026-10-07锛屽紑鍙戞満瑁?J-Link V9.82 鍚庡畬鏁村鐜板畾浣嶏級**锛氣憼 **`JLINKARM_EMU_GetList` 缂撳啿鍖鸿涔夐敊 = 闂€€鐪熸牴鍥?*鈥斺€旇 API 濉厖 264 瀛楄妭/椤圭殑 `JLINK_EMU_CONNECT_INFO` 缁撴瀯浣撴暟缁勶紙SerialNumber@0锛夛紝棣栫増鎸?`uint[32]`锛?28 瀛楄妭锛変紶鍏ワ紝DLL 缁撴瀯浣撳啓鍏ヨ秺鐣岀牬鍧忔墭绠″爢 鈫?鏁扮鍚?GC 鍦?coreclr 鍐呰闂繚渚嬶紙WER 浜嬩欢锛氫袱娆″穿婧?coreclr.dll 鍚屽亸绉?0x279913銆?xC0000005锛岃繘绋嬬洿鎺ユ秷澶辨棤浠讳綍鎵樼鏃ュ織/宕╂簝杞偍锛夛紱淇 = pylink 涓ゆ鍗忚锛堝厛 `(host,NULL,0)` 鍙栨暟銆佸啀鎸夋暟鍒嗛厤 `count脳264` 缂撳啿鍙栫粨鏋勪綋銆佸亸绉?0 璇?SN锛夛紱鈶?**unsecure hook 涓夊閿?*鈥斺€旂鍚嶅疄涓?`int fn(title,msg,flags)` 杩斿洖鎸夐挳鐮侊紙棣栫増鍗曞弬 void = DLL 璇诲瀮鍦炬寜閽爜锛夈€佸鍑哄悕 v9.82 瀹炰负 `JLINK_SetHookUnsecureDialog`锛堟棤 ARM 鍓嶇紑锛夈€佸畨瑁呮椂鏈?pylink 鍦?open 鍚庯紱淇 = 涓夊弬 int 濮旀墭涓€寰嬭繑鍥?DLG_BUTTON_NO(2) + 鍙屽悕 TryBind + OpenEx 鍚庡畨瑁咃紝涓斿姞杞芥湡涓嶅啀鍋氫换浣?DLL 浜や簰锛涒憿 **GUI 杩涚▼鏃犳帰閽?OpenEx 鏃犻檺闃诲**鈥斺€擠LL 鍦?GUI 杩涚▼閿欒璺緞寮硅嚜瀹堕敊璇锛屾棤娑堟伅娉电嚎绋嬩笂姝荤瓑锛堝鐓у疄楠屽疄閿わ細pythonw+ctypes 鍚屾寕銆乧onsole 鍚岀爜绉掑洖 `Cannot connect to the probe`锛涢敊璇?璀﹀憡杈撳嚭鍥炶皟 pre-open 娉ㄥ唽涔熸嫤涓嶄綇锛夛紱淇 = RTT Viewer 鍚屾**鎺㈤拡鍓嶇疆妫€鏌?*鈥斺€擮pen 搴忓垪鍏堟灇涓?USB 鎺㈤拡锛岄浂鎺㈤拡/SN 涓嶅湪绾挎绉掔骇鎶涙槑纭敊璇紝缁濅笉杩?OpenEx锛堝疄娴?11ms 鎶ラ敊锛夈€傞檮甯︼細`JLINKARM_SetErrorOutHandler/SetWarnOutHandler` open 鍓嶆敞鍐岋紙pylink 鍚屾锛夈€傞獙璇侊細寮€鍙戞満鐪?DLL锛圴9.82锛変笁杩炴祴鈥斺€斿璇濇妫€娴嬶紙Scan 鐪熸灇涓撅級鈫?杩炴帴璐熻矾寰勬绉掔骇鎶ラ敊 鈫?60s+ 瀛樻椿闆跺穿婧冿紱v1.4.12 鍚屽満鏅袱娆?2s 鍐呴棯閫€锛圵ER 鐣欑棔锛夊鐓с€?*鐪熸満娈碉紙鎺㈤拡+鐩爣鏉匡級寰呯‖浠?*锛歊ttCheck `--hw` 纭欢娈?+ UI 鐪熸満鍏ㄩ摼璺€?
+### 6.1 楠屾敹鐘舵€?
+- [x] Telnet 鍗忓晢鍣?9 鍗曟祴鍏ㄧ豢锛?07 鎬昏锛夈€?- [x] ConPTY 鏈湴缁堢瀹炴祴锛氬惎鍔?鍥炴樉/resize/閿€姣侊紙鎺㈤拡绋嬪簭锛孭owerShell 5.1锛夈€?- [ ] Telnet 杩炵湡瀹炶澶囷紙宓屽叆寮?telnetd锛夊瓧绗︽ā寮忓洖鏄?鈥斺€?**寰呬汉宸ョ湡鏈?*銆?- [ ] 缁堢绐椼€? 鏈湴銆嶄氦浜掍綋楠岋紙瀛椾綋娓叉煋/涓枃/澶嶅埗绮樿创锛夆€斺€?**寰呬汉宸?*銆?- [x] RTT 璐熻矾寰勶紙鏈 J-Link 杞欢鏈哄櫒锛夛細`RttCheck` 鏃犵‖浠舵 ALL PASS + UIA 瀵硅瘽妗?鏍￠獙/澶辫触寮圭獥/AppLog 鍏ㄩ摼璺紙2026-09-30 棣栭獙锛?026-10-07 v1.4.12 瀵归綈 pylink 搴忓垪鍚庡楠岄€氳繃锛屽惈鏂板杩炴帴寮€濮嬬暀鐥曪級銆?- [ ] RTT 鐪熸満锛堣 J-Link 杞欢 + 鎺㈤拡 + 鐩爣鏉匡紝鎴?DLL 澶嶅埗鍒扮▼搴忕洰褰曪級锛歚RttCheck --hw` 纭欢娈碉紙杩炴帴/璇?鍐?浜掓枼妲?鏂紑骞傜瓑/鍐嶈繛锛宍--pull` 鎷旀帰閽堣嚜鎭㈠锛? UI 鐪熸満鍏ㄩ摼璺?鈥斺€?**寰呯湡鏈猴紙纭欢涓嶅湪寮€鍙戞満锛泇1.4.12 璧风湡鏈烘棩蹇楀惈 DLL 鍏ㄧ▼杈撳嚭涓庤繛鎺ュ紑濮嬪弬鏁帮紝鍙繙绋嬫帓闅滐級**銆?- [ ] SFTP / 绔彛杞彂 鈥斺€?**寰呴渶姹傜‘璁ゅ悗鐙珛鎵规**锛圫FTP 涓哄ぇ UI 浠讹細鍙屾爮娴忚 + 浼犺緭闃熷垪锛夈€?
+## 7. 椋庨櫓涓庡绛?
+| 椋庨櫓 | 瀵圭瓥 |
 | --- | --- |
-| XTerm.NET 年轻库（单一维护者） | 纯托管 MIT；若上游停更可整源 vendor 进仓库（GitHub 当前网络不通，暂走 NuGet 二进制依赖，不阻塞） |
-| WPF 自绘性能（输出高峰） | 只画视口 + 文字逐格缓存（逐格绘制为兼容比例字体设计，见 §3.2）+ 16ms 合帧；若仍不足再加 per-line 缓存（计划预留的优化旋钮） |
-| CJK 宽字符度量偏差 | 格宽 = max(Cascadia Mono 数字宽≈8.2, 全角/2=7)，CJK 固定占两格逐格绘制；超格字形水平压缩兜底；冒烟含中文 vim |
-| SSH.NET 不支持 .ppk | UI 明确提示转换（Xshell 用户迁移注意） |
-| 每键回显延迟 | 键入直发（不经 50ms FlushRx）；终端泵 16ms；实测超阈值再降 |
+| XTerm.NET 骞磋交搴擄紙鍗曚竴缁存姢鑰咃級 | 绾墭绠?MIT锛涜嫢涓婃父鍋滄洿鍙暣婧?vendor 杩涗粨搴擄紙GitHub 褰撳墠缃戠粶涓嶉€氾紝鏆傝蛋 NuGet 浜岃繘鍒朵緷璧栵紝涓嶉樆濉烇級 |
+| WPF 鑷粯鎬ц兘锛堣緭鍑洪珮宄帮級 | 鍙敾瑙嗗彛 + 鏂囧瓧閫愭牸缂撳瓨锛堥€愭牸缁樺埗涓哄吋瀹规瘮渚嬪瓧浣撹璁★紝瑙?搂3.2锛? 16ms 鍚堝抚锛涜嫢浠嶄笉瓒冲啀鍔?per-line 缂撳瓨锛堣鍒掗鐣欑殑浼樺寲鏃嬮挳锛?|
+| CJK 瀹藉瓧绗﹀害閲忓亸宸?| 鏍煎 = max(Cascadia Mono 鏁板瓧瀹解増8.2, 鍏ㄨ/2=7)锛孋JK 鍥哄畾鍗犱袱鏍奸€愭牸缁樺埗锛涜秴鏍煎瓧褰㈡按骞冲帇缂╁厹搴曪紱鍐掔儫鍚腑鏂?vim |
+| SSH.NET 涓嶆敮鎸?.ppk | UI 鏄庣‘鎻愮ず杞崲锛圶shell 鐢ㄦ埛杩佺Щ娉ㄦ剰锛?|
+| 姣忛敭鍥炴樉寤惰繜 | 閿叆鐩村彂锛堜笉缁?50ms FlushRx锛夛紱缁堢娉?16ms锛涘疄娴嬭秴闃堝€煎啀闄?|
 
-## 8. 完成度更新约定
-
-每达成一个里程碑：更新本文档 §0 跟踪表与状态行 → README 路线图行同步 → 相关验收项打勾（硬件/真机项注明「待人工确认」）→ 按需提升版本号。
+## 8. 瀹屾垚搴︽洿鏂扮害瀹?
+姣忚揪鎴愪竴涓噷绋嬬锛氭洿鏂版湰鏂囨。 搂0 璺熻釜琛ㄤ笌鐘舵€佽 鈫?README 璺嚎鍥捐鍚屾 鈫?鐩稿叧楠屾敹椤规墦鍕撅紙纭欢/鐪熸満椤规敞鏄庛€屽緟浜哄伐纭銆嶏級鈫?鎸夐渶鎻愬崌鐗堟湰鍙枫€?
