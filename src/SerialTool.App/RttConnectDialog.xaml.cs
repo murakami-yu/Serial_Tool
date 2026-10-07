@@ -23,10 +23,7 @@ public partial class RttConnectDialog : Window
         var last = Services.RttLastUsedStore.Load();
         IfaceBox.SelectedIndex = last?.Iface is 0 or 1 ? last.Iface : 0;
         SpeedBox.Text = (last?.SpeedKhz ?? 4000).ToString();
-        if (!string.IsNullOrWhiteSpace(last?.Device))
-            DeviceBox.Text = last.Device;
-        else
-            DeviceBox.SelectedIndex = 0; // 无记忆时默认选第一个常用器件（RTT-T 默认选中首项同款）
+        DeviceBox.Text = string.IsNullOrWhiteSpace(last?.Device) ? "STM32F103C8" : last.Device; // 无记忆默认首项（RTT-T 同款）
         ChannelBox.SelectedIndex = last is { Channel: >= 0 and <= 3 } lu ? lu.Channel : 0;
         ResetBox.IsChecked = last?.Reset ?? true;
         Loaded += (_, _) => DetectProbes();

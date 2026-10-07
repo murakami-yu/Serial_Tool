@@ -41,17 +41,10 @@
                     <ComboBoxItem Content="SWD"/>
                     <ComboBoxItem Content="JTAG"/>
                 </ComboBox>
-                <!-- IsEditable + 常用器件下拉（RTT-T config 器件表同款）：可选可输，记忆上次使用 -->
-                <ComboBox x:Name="DeviceBox" IsEditable="True" VerticalAlignment="Center" MinWidth="160"
-                          ToolTip="J-Link 器件名，须与目标芯片一致（可下拉选常用型号或直接输入）">
-                    <ComboBoxItem Content="STM32F103C8"/>
-                    <ComboBoxItem Content="STM32F407VG"/>
-                    <ComboBoxItem Content="nRF52840_xxAA"/>
-                    <ComboBoxItem Content="nRF52832_xxAA"/>
-                    <ComboBoxItem Content="nRF52832_xxAB"/>
-                    <ComboBoxItem Content="GD32F103C8"/>
-                    <ComboBoxItem Content="CH32F103C8"/>
-                </ComboBox>
+                <!-- 纯 TextBox（可编辑 ComboBox 内部编辑框受全局样式影响不渲染文本，真机+开发机双实证）。
+                     常用型号提示放 ToolTip，自动回填由上次使用记忆完成（RTT-T 同款体验） -->
+                <TextBox x:Name="DeviceBox" VerticalAlignment="Center" MinWidth="160"
+                         ToolTip="J-Link 器件名，须与目标芯片一致。常用：STM32F103C8、STM32F407VG、nRF52840_xxAA、nRF52832_xxAA、GD32F103C8、CH32F103C8（上次使用的型号会自动带出）"/>
             </DockPanel>
 
             <TextBlock Grid.Row="2" Grid.Column="0" Text="探针 S/N" VerticalAlignment="Center"
@@ -73,14 +66,8 @@
                         <ComboBoxItem Content="3"/>
                     </ComboBox>
                 </StackPanel>
-                <ComboBox x:Name="SpeedBox" IsEditable="True" Width="86" VerticalAlignment="Center"
-                          ToolTip="接口速度 kHz（J-Link 自动协商到可行值）">
-                    <ComboBoxItem Content="1000"/>
-                    <ComboBoxItem Content="2000"/>
-                    <ComboBoxItem Content="4000"/>
-                    <ComboBoxItem Content="8000"/>
-                    <ComboBoxItem Content="12000"/>
-                </ComboBox>
+                <TextBox x:Name="SpeedBox" VerticalAlignment="Center" Width="86"
+                         ToolTip="接口速度 kHz（J-Link 自动协商到可行值），默认 4000"/>
                 <TextBlock Text="kHz" VerticalAlignment="Center" Margin="6,0,0,0"
                            Foreground="{DynamicResource MutedBrush}"/>
             </DockPanel>
