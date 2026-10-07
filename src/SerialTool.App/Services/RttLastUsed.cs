@@ -4,9 +4,10 @@ using System.Text.Json;
 namespace SerialTool.App.Services;
 
 /// <summary>RTT 连接上次使用参数（RTT-T config.json 同款记忆）：Config/rtt_last.json。
-/// 对话框打开时自动回填，免去每次重选；S/N 不持久化（以当次探针检测为准）。</summary>
+/// **Sn 绑定记忆**：芯片型号与探针绑定（同一探针 = 同一块板子 = 同一芯片），
+/// 对话框按当次检测到的 S/N 匹配回填——换探针不串配置，实现一键连接。</summary>
 public sealed record RttLastUsed(
-    string Device, int SpeedKhz, int Iface, int Channel, bool Reset);
+    string Device, int SpeedKhz, int Iface, int Channel, bool Reset, string Sn = "");
 
 public static class RttLastUsedStore
 {
