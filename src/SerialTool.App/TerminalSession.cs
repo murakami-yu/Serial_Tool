@@ -26,6 +26,42 @@ public sealed class TerminalSession : IDisposable
     private Services.SessionLogger? _logger;
     private System.Text.Decoder? _logDecoder; // 跨接收包的多字节字符状态（防中文截断成乱码）
 
+    // ---------- 时间戳（RTT-T「时间戳」同款）：每行行首注入 [HH:mm:ss.fff]，用户开关 ----------
+
+    private volatile bool _timestamps;
+    private bool _tsNeedPrefix = true; // 行首状态（读线程独占写；会话首行即注入）
+
+    /// <summary>时间戳开关：开启后每行行首注入 [HH:mm:ss.fff]（显示/日志/导出一致）。</summary>
+    public bool TimestampsEnabled
+    {
+        get => _timestamps;
+        set
+        {
+            _timestamps = value;
+            if (value) _tsNeedPrefix = true; // 开启后下一行即生效
+        }
+    }
+
+    /// <summary>读线程回调：接收字节流的会话级转换（当前仅时间戳注入）。
+    /// 单点转换供 显示+日志 共用，保证两者内容一致。注入只发生在行首（换行后的第一个内容字节前），
+    /// 不触碰行内 ANSI 转义与多字节 UTF-8 序列。</summary>
+    internal byte[] Transform(ReadOnlySpan<byte> data)
+    {
+        if (!_timestamps) return data.ToArray();
+        var result = new List<byte>(data.Length + 32);
+        foreach (var b in data)
+        {
+            if (_tsNeedPrefix && b != (byte)'\n' && b != (byte)'\r')
+            {
+                result.AddRange(System.Text.Encoding.ASCII.GetBytes($"[{DateTime.Now:HH:mm:ss.fff}] "));
+                _tsNeedPrefix = false;
+            }
+            result.Add(b);
+            if (b == (byte)'\n' || b == (byte)'\r') _tsNeedPrefix = true; // \r\n 只注入一次（\n 到达时仍处行首守卫）
+        }
+        return result.ToArray();
+    }
+
     /// <summary>实时日志是否开启。</summary>
     public bool Logging => _logger is { IsActive: true };
 
@@ -84,7 +120,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Ssh(Backends.Ssh.SshBackend backend, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, backend);
-        backend.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };   // 读线程 → 线程安全入队
+        backend.DataReceived += (_, e) => { var t = s.Transform(e.Bytes); s.LogBytes(t); view.EnqueueBytes(t); };   // 读线程 → 单点转换 → 日志+显示共用
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Error($"独立 SSH 会话中断（{title}）：{msg}");
@@ -108,7 +144,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Rtt(Backends.Rtt.RttBackend backend, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, backend);
-        backend.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };
+        backend.DataReceived += (_, e) => { var t = s.Transform(e.Bytes); s.LogBytes(t); view.EnqueueBytes(t); };
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Error($"独立 RTT 会话中断（{title}）：{msg}");
@@ -131,7 +167,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Telnet(Backends.Telnet.TelnetBackend backend, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, backend);
-        backend.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };
+        backend.DataReceived += (_, e) => { var t = s.Transform(e.Bytes); s.LogBytes(t); view.EnqueueBytes(t); };
         backend.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Error($"独立 Telnet 会话中断（{title}）：{msg}");
@@ -149,7 +185,7 @@ public sealed class TerminalSession : IDisposable
     public static TerminalSession Local(Services.ConPtySession con, TerminalView view, string title)
     {
         var s = new TerminalSession(title, view, con);
-        con.DataReceived += (_, e) => { s.LogBytes(e.Bytes); view.EnqueueBytes(e.Bytes); };
+        con.DataReceived += (_, e) => { var t = s.Transform(e.Bytes); s.LogBytes(t); view.EnqueueBytes(t); };
         con.ErrorOccurred += (_, msg) => view.Dispatcher.BeginInvoke(() =>
         {
             Services.AppLog.Info($"本地终端会话退出（{title}）：{msg}");

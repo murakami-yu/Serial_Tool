@@ -33,6 +33,8 @@
                     ToolTip="新建 SEGGER RTT 会话（经 J-Link 探针读写目标机 RAM 环形缓冲，需 J-Link 软件与已集成 RTT 的固件；同时仅一个连接）"/>
             <Button DockPanel.Dock="Right" Content="导出" Click="ExportActive_Click" Margin="6,0,0,0" MinWidth="52"
                     ToolTip="把当前标签终端的全部内容（含滚回）另存为 txt 文件"/>
+            <Button x:Name="TsToggleBtn" DockPanel.Dock="Right" Content="时间" Click="TsToggle_Click" Margin="6,0,0,0" MinWidth="52"
+                    ToolTip="开启/关闭当前标签的实时时间戳：每行行首注入 [HH:mm:ss.fff]（RTT-T「时间戳」同款，显示/日志/导出一致）"/>
             <Button x:Name="LogToggleBtn" DockPanel.Dock="Right" Content="日志" Click="LogToggle_Click" Margin="6,0,0,0" MinWidth="52"
                     ToolTip="开启/停止当前标签的实时日志（接收数据原样落盘到 Logs/terminal/，RTT-T「实时保存」同款）"/>
             <Button DockPanel.Dock="Right" Content="删除" Click="DeleteSaved_Click" Margin="6,0,0,0"

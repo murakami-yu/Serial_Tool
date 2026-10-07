@@ -72,7 +72,7 @@ public partial class TerminalWindow : Window
     private TerminalSession? ActiveSession =>
         _tabs.Find(t => ReferenceEquals(t.Tab, Sessions.SelectedItem))?.Session;
 
-    /// <summary>日志按钮状态随选中标签刷新（开启中 →「停止」+ 路径提示）。</summary>
+    /// <summary>日志/时间戳按钮状态随选中标签刷新（开启中 →「停止/时间√」+ 路径提示）。</summary>
     private void UpdateLogButton()
     {
         var s = ActiveSession;
@@ -82,6 +82,22 @@ public partial class TerminalWindow : Window
         LogToggleBtn.ToolTip = s is null || s.IsMain
             ? "选择一个独立会话标签（RTT/SSH/Telnet/本地）后开启实时日志"
             : logging ? $"实时记录中 → {s.LogPath}（点击停止）" : "开启当前标签的实时日志（接收数据原样落盘 Logs/terminal/）";
+        var ts = s is { TimestampsEnabled: true };
+        TsToggleBtn.Content = ts ? "时间√" : "时间";
+        TsToggleBtn.IsEnabled = s is { IsMain: false };
+        TsToggleBtn.ToolTip = s is null || s.IsMain
+            ? "选择一个独立会话标签（RTT/SSH/Telnet/本地）后可开启时间戳"
+            : ts ? "时间戳已开启：每行行首 [HH:mm:ss.fff]（点击关闭）" : "开启时间戳：每行行首注入 [HH:mm:ss.fff]（显示/日志/导出一致）";
+    }
+
+    /// <summary>「时间」开关：当前独立会话每行行首注入实时时间戳。</summary>
+    private void TsToggle_Click(object sender, RoutedEventArgs e)
+    {
+        var s = ActiveSession;
+        if (s is null || s.IsMain) return;
+        s.TimestampsEnabled = !s.TimestampsEnabled;
+        Services.AppLog.Info($"终端会话时间戳{(s.TimestampsEnabled ? "开启" : "关闭")}：{s.Title}");
+        UpdateLogButton();
     }
 
     /// <summary>「日志」开关：当前独立会话的接收数据实时落盘。</summary>
